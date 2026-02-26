@@ -22,14 +22,14 @@ export async function commandsCommand(ctx: BotContext): Promise<void> {
 
     await ctx.reply(
       `⚡ *goBlink — Group Commands*\n\n` +
-      `/transfer — Cross-chain token transfer\n` +
-      `/request — Create a payment request link\n` +
-      `/price — Token prices\n` +
-      `/price ETH — Look up a specific token\n` +
-      `/help — Full help center\n` +
-      `/commands — This list\n\n` +
+      `/transfer@goBlinkBot — Cross-chain transfer\n` +
+      `/request@goBlinkBot — Payment request link\n` +
+      `/price@goBlinkBot — All token prices\n` +
+      `/price@goBlinkBot ETH — Specific token price\n` +
+      `/referral@goBlinkBot — Your referral link\n` +
+      `/help@goBlinkBot — Full help center\n` +
+      `/commands@goBlinkBot — This list\n\n` +
       `📩 *DM-only:* /history, /addressbook, /save, /default, /repeat\n\n` +
-      `🔗 /referral — Your referral link & stats\n\n` +
       `💡 *Inline:* Type \`@goBlinkBot 100 USDC from ethereum to solana\` anywhere`,
       { parse_mode: 'Markdown', reply_markup: kb },
     );
