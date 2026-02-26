@@ -61,6 +61,9 @@ export interface TgUser {
   telegram_id: number;
   telegram_username?: string;
   first_name?: string;
+  referral_code?: string;
+  referred_by?: string;
+  settings?: Record<string, unknown>;
   created_at: string;
   last_active_at: string;
 }

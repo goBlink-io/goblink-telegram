@@ -95,6 +95,7 @@ async function main() {
       { command: 'save', description: 'Save an address' },
       { command: 'default', description: 'Set default source chain/token' },
       { command: 'repeat', description: 'Repeat your last transfer' },
+      { command: 'referral', description: 'Your referral link & stats' },
       { command: 'commands', description: 'List available commands' },
       { command: 'help', description: 'Help center' },
     ],

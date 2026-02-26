@@ -45,6 +45,26 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     return;
   }
 
+  // Referral deep link: /start ref_<code>
+  const refMatch = text.match(/\/start\s+ref_([a-z0-9]+)/i);
+  if (refMatch) {
+    const code = refMatch[1]!.toLowerCase();
+    try {
+      const { getUserByReferralCode, setReferredBy } = await import('../services/supabase.js');
+      const referrer = await getUserByReferralCode(code);
+      if (referrer && referrer.telegram_id !== from.id) {
+        const user = await createOrUpdateUser(from.id, from.username, from.first_name);
+        const wasSet = await setReferredBy(user.id, referrer.id);
+        if (wasSet) {
+          console.log(`Referral: user ${from.id} referred by ${referrer.telegram_id} (code: ${code})`);
+        }
+      }
+    } catch (err) {
+      console.error('Referral tracking failed:', err);
+    }
+    // Continue to normal start flow (don't return — show welcome)
+  }
+
   // From group redirect — show welcome with context
   if (text.includes('from_group')) {
     await ctx.reply(

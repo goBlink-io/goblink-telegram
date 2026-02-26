@@ -29,6 +29,7 @@ export async function commandsCommand(ctx: BotContext): Promise<void> {
       `/help — Full help center\n` +
       `/commands — This list\n\n` +
       `📩 *DM-only:* /history, /addressbook, /save, /default, /repeat\n\n` +
+      `🔗 /referral — Your referral link & stats\n\n` +
       `💡 *Inline:* Type \`@goBlinkBot 100 USDC from ethereum to solana\` anywhere`,
       { parse_mode: 'Markdown', reply_markup: kb },
     );
@@ -45,8 +46,9 @@ export async function commandsCommand(ctx: BotContext): Promise<void> {
       `*Address Book*\n` +
       `/addressbook — View saved addresses\n` +
       `/save <label> <chain> <address>\n\n` +
-      `*Settings*\n` +
-      `/default <chain> <token> — Set default source\n\n` +
+      `*Settings & Referrals*\n` +
+      `/default <chain> <token> — Set default source\n` +
+      `/referral — Your referral link & stats\n\n` +
       `/help — Full help center\n` +
       `/commands — This list\n\n` +
       `💡 *Inline:* Type \`@goBlinkBot 100 USDC to solana\` in any chat`,

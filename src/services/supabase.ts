@@ -157,6 +157,96 @@ export async function deleteAddress(id: string): Promise<void> {
   if (error) throw new Error(`Failed to delete address: ${error.message}`);
 }
 
+// --- Referrals ---
+
+function generateReferralCode(): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let code = '';
+  for (let i = 0; i < 8; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return code;
+}
+
+/** Ensure user has a referral code, generate one if missing */
+export async function ensureReferralCode(userId: string): Promise<string> {
+  const db = getSupabase();
+
+  // Check if already has one
+  const { data: user } = await db.from('tg_users').select('referral_code').eq('id', userId).single();
+  if (user?.referral_code) return user.referral_code;
+
+  // Generate and save (retry on collision)
+  for (let i = 0; i < 3; i++) {
+    const code = generateReferralCode();
+    const { error } = await db.from('tg_users').update({ referral_code: code }).eq('id', userId);
+    if (!error) return code;
+  }
+  throw new Error('Failed to generate referral code');
+}
+
+/** Look up a user by referral code */
+export async function getUserByReferralCode(code: string): Promise<TgUser | null> {
+  const db = getSupabase();
+  const { data, error } = await db
+    .from('tg_users')
+    .select()
+    .eq('referral_code', code.toLowerCase())
+    .single();
+  if (error && error.code !== 'PGRST116') throw new Error(`Referral lookup failed: ${error.message}`);
+  return (data as TgUser) ?? null;
+}
+
+/** Set referred_by on a user (only if not already set) */
+export async function setReferredBy(userId: string, referrerId: string): Promise<boolean> {
+  if (userId === referrerId) return false; // Can't refer yourself
+  const db = getSupabase();
+  const { data } = await db.from('tg_users').select('referred_by').eq('id', userId).single();
+  if (data?.referred_by) return false; // Already referred
+
+  const { error } = await db.from('tg_users').update({ referred_by: referrerId }).eq('id', userId);
+  return !error;
+}
+
+/** Get referral stats for a user */
+export async function getReferralStats(userId: string): Promise<{
+  referralCount: number;
+  referralVolume: number;
+}> {
+  const db = getSupabase();
+
+  // Count users referred
+  const { count } = await db
+    .from('tg_users')
+    .select('*', { count: 'exact', head: true })
+    .eq('referred_by', userId);
+
+  // Sum transfer volume from referred users
+  const { data: referredUsers } = await db
+    .from('tg_users')
+    .select('id')
+    .eq('referred_by', userId);
+
+  let referralVolume = 0;
+  if (referredUsers && referredUsers.length > 0) {
+    const ids = referredUsers.map(u => u.id);
+    const { data: transfers } = await db
+      .from('tg_transfers')
+      .select('amount')
+      .in('user_id', ids)
+      .eq('status', 'SUCCESS');
+
+    if (transfers) {
+      referralVolume = transfers.reduce((sum, t) => sum + parseFloat(t.amount || '0'), 0);
+    }
+  }
+
+  return {
+    referralCount: count ?? 0,
+    referralVolume,
+  };
+}
+
 // --- User Settings ---
 
 export interface UserDefaults {
