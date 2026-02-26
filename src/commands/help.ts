@@ -26,10 +26,13 @@ const HELP_COMMANDS = `📋 *All Commands*
 /addressbook — View saved addresses
 /save \\<label\\> \\<chain\\> \\<address\\> — Save one
 
-*Settings*
+*Quick Actions*
+/repeat — Repeat your last transfer
 /default \\<chain\\> \\<token\\> — Set default source
-/default — View current defaults
 /default clear — Reset defaults
+
+*Inline Mode*
+Type \`@goBlinkBot 100 USDC to solana\` in any chat to share a transfer link\\.
 
 /help — This help center
 /start — Main menu`;
@@ -51,8 +54,10 @@ After confirming, you'll get a *deposit address*\\. Send the exact amount from a
 💡 *Tips:*
 • Type a token name to search \\(e\\.g\\. "usdc"\\) instead of scrolling
 • Use /default to skip the first 2 steps
+• /repeat re\\-does your last transfer in one tap
 • Save addresses with /save so you don't retype them
 • Same\\-chain transfers auto\\-set the refund address
+• Use inline mode: \`@goBlinkBot 100 USDC to solana\` in any chat
 
 ⚠️ *goBlink is non\\-custodial* — we never hold your private keys\\. Each transfer generates a unique deposit address\\.`;
 

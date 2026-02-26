@@ -107,7 +107,7 @@ let cachedChains: ChainConfig[] | null = null;
 let chainsCacheTime = 0;
 const CHAINS_TTL = 300_000; // 5 min
 
-async function getChains(): Promise<ChainConfig[]> {
+export async function getChainsCached(): Promise<ChainConfig[]> {
   if (cachedChains && Date.now() - chainsCacheTime < CHAINS_TTL) return cachedChains;
   const sdk = getSDK();
   const all = sdk.getChains();
@@ -157,7 +157,7 @@ export async function startTransferFlow(ctx: BotContext): Promise<void> {
   ctx.session.transferState = state;
 
   sendTyping(ctx);
-  const chains = await getChains();
+  const chains = await getChainsCached();
   state.chains = chains;
 
   // Fix #10: Check for user defaults — skip to destination if set
@@ -189,6 +189,51 @@ export async function startTransferFlow(ctx: BotContext): Promise<void> {
   await sendStep(ctx, state, `${stepHeader('src_chain')}\n\n🔗 Where are your tokens now?`, chainSelectKeyboard(sortChains(chains), 0, 'src_chain'));
 }
 
+/**
+ * Start a transfer flow pre-filled from inline mode deep link.
+ * Destination is set, user picks source chain → token → amount → recipient.
+ */
+export async function startTransferFlowPrefilled(
+  ctx: BotContext,
+  prefill: { amount: string; dstToken: string; dstChain: string },
+): Promise<void> {
+  const from = ctx.from;
+  if (!from) return;
+
+  const limit = checkTransferLimit(from.id);
+  if (!limit.allowed) {
+    await ctx.reply(`⏳ Slow down! Try again in ${formatRetryAfter(limit.retryAfterMs)}.`);
+    return;
+  }
+
+  const state = newTransferState();
+  ctx.session.transferState = state;
+
+  sendTyping(ctx);
+  const chains = await getChainsCached();
+  state.chains = chains;
+
+  // Set destination
+  const dstChainConfig = chains.find(c => c.id === prefill.dstChain);
+  if (!dstChainConfig) {
+    // Unknown chain — fall back to normal flow
+    await sendStep(ctx, state, `${stepHeader('src_chain')}\n\n🔗 Where are your tokens now?`, chainSelectKeyboard(sortChains(chains), 0, 'src_chain'));
+    return;
+  }
+
+  state.dstChain = prefill.dstChain as ChainId;
+  state.dstToken = prefill.dstToken;
+  state.amount = prefill.amount;
+
+  // Skip to source chain selection
+  state.step = 'src_chain';
+  const srcChains = chains.filter(c => c.id !== state.dstChain);
+  await sendStep(ctx, state,
+    `${stepHeader('src_chain')}\n\n⚡ Sending ${prefill.amount} → ${displaySymbol(prefill.dstToken)} on ${dstChainConfig.name}\n\n🔗 Where are your tokens now?`,
+    chainSelectKeyboard(sortChains(srcChains), 0, 'src_chain'),
+  );
+}
+
 // --- Handle all transfer-related callbacks ---
 export async function handleTransferCallback(ctx: BotContext, data: string): Promise<void> {
   const state = ctx.session.transferState;
@@ -199,7 +244,7 @@ export async function handleTransferCallback(ctx: BotContext, data: string): Pro
 
   try { await ctx.answerCallbackQuery(); } catch { /* stale */ }
 
-  const chains = state.chains ?? await getChains();
+  const chains = state.chains ?? await getChainsCached();
 
   // --- Cancel --- (Fix #5: menu keyboard on cancel)
   if (data === 'action:cancel') {
@@ -379,7 +424,7 @@ export async function handleTransferText(ctx: BotContext): Promise<boolean> {
     return true;
   }
 
-  const chains = state.chains ?? await getChains();
+  const chains = state.chains ?? await getChainsCached();
   const sdk = getSDK();
 
   // --- Fix #9: Token search by typing ---
@@ -479,7 +524,7 @@ export async function handleTransferText(ctx: BotContext): Promise<boolean> {
 }
 
 // --- Show confirmation ---
-async function showConfirmation(ctx: BotContext, state: TransferState, chains: ChainConfig[]): Promise<void> {
+export async function showConfirmation(ctx: BotContext, state: TransferState, chains: ChainConfig[]): Promise<void> {
   const sdk = getSDK();
   const quoteLimit = checkQuoteLimit(ctx.from!.id);
   if (!quoteLimit.allowed) {

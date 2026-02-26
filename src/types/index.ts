@@ -4,6 +4,7 @@ import type { ChainId, ChainConfig, Token } from '@urban-blazer/goblink-sdk';
 export interface SessionData {
   transferState?: TransferState;
   requestState?: RequestState;
+  repeatTransfers?: TgTransfer[];
 }
 
 export type TransferStep =

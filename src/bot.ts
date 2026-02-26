@@ -8,7 +8,10 @@ import { helpCommand, handleHelpCallback } from './commands/help.js';
 import { addressBookCommand, saveAddressCommand, handleAddressDeleteCallback } from './commands/addressbook.js';
 import { startTransferFlow, handleTransferCallback, handleTransferText } from './conversations/transfer.js';
 import { defaultCommand } from './commands/default.js';
+import { repeatCommand, handleRepeatCallback } from './commands/repeat.js';
 import { startRequestFlow, handleRequestCallback, handleRequestText } from './conversations/request.js';
+import { handleInlineQuery } from './inline/handler.js';
+import { detectGoBlinkLinks } from './handlers/link-detector.js';
 
 export function createBot(): Bot<BotContext> {
   const bot = new Bot<BotContext>(config.telegramBotToken);
@@ -32,6 +35,7 @@ export function createBot(): Bot<BotContext> {
   bot.command('addresses', addressBookCommand);
   bot.command('save', saveAddressCommand);
   bot.command('default', defaultCommand);
+  bot.command('repeat', repeatCommand);
   bot.command('request', async (ctx) => { await startRequestFlow(ctx); });
   bot.command('cancel', async (ctx) => {
     ctx.session.transferState = undefined;
@@ -39,6 +43,9 @@ export function createBot(): Bot<BotContext> {
     const { mainMenuKeyboard } = await import('./utils/keyboards.js');
     await ctx.reply('Cancelled.', { reply_markup: mainMenuKeyboard() });
   });
+
+  // Inline queries
+  bot.on('inline_query', handleInlineQuery);
 
   // Callback queries — transfer flow first, then menu
   bot.on('callback_query:data', async (ctx) => {
@@ -101,6 +108,12 @@ export function createBot(): Bot<BotContext> {
       return;
     }
 
+    // Repeat transfer callbacks
+    if (data.startsWith('repeat:')) {
+      await handleRepeatCallback(ctx, data);
+      return;
+    }
+
     // Help section callbacks
     if (data.startsWith('help:')) {
       await handleHelpCallback(ctx, data);
@@ -156,7 +169,8 @@ export function createBot(): Bot<BotContext> {
     // Transfer flow
     const handled = await handleTransferText(ctx);
     if (!handled) {
-      // Not in any flow — ignore
+      // Not in any flow — check for goblink.io links
+    await detectGoBlinkLinks(ctx);
     }
   });
 

@@ -94,6 +94,7 @@ async function main() {
       { command: 'addressbook', description: 'Saved addresses' },
       { command: 'save', description: 'Save an address' },
       { command: 'default', description: 'Set default source chain/token' },
+      { command: 'repeat', description: 'Repeat your last transfer' },
       { command: 'help', description: 'Help center' },
     ],
   });
