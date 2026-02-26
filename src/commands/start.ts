@@ -16,18 +16,31 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     console.error('Failed to upsert user:', err);
   }
 
-  // Check for deep link params: /start t_<amount>_<token>_<destChain>
+  // Deep link: /start t_<amount>_<token>_<srcChain>_<dstChain>  (both chains)
+  //        or: /start t_<amount>_<token>_<dstChain>            (destination only)
   const text = ctx.message?.text ?? '';
-  const deepMatch = text.match(/\/start\s+t_(\d+(?:\.\d+)?)_(\w+)_(\w+)/);
+  const deepMatch4 = text.match(/\/start\s+t_(\d+(?:\.\d+)?)_(\w+)_(\w+)_(\w+)/);
+  const deepMatch3 = !deepMatch4 ? text.match(/\/start\s+t_(\d+(?:\.\d+)?)_(\w+)_(\w+)/) : null;
 
-  if (deepMatch) {
-    const [, amount, token, destChain] = deepMatch;
-    // Pre-fill transfer and jump to source chain selection
+  if (deepMatch4) {
+    const [, amount, token, srcChain, dstChain] = deepMatch4;
+    const { startTransferFlowPrefilled } = await import('../conversations/transfer.js');
+    await startTransferFlowPrefilled(ctx, {
+      amount: amount!,
+      srcToken: token!.toUpperCase(),
+      srcChain: srcChain!,
+      dstChain: dstChain!,
+    });
+    return;
+  }
+
+  if (deepMatch3) {
+    const [, amount, token, dstChain] = deepMatch3;
     const { startTransferFlowPrefilled } = await import('../conversations/transfer.js');
     await startTransferFlowPrefilled(ctx, {
       amount: amount!,
       dstToken: token!.toUpperCase(),
-      dstChain: destChain!,
+      dstChain: dstChain!,
     });
     return;
   }

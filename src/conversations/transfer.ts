@@ -19,6 +19,7 @@ import {
 import {
   formatTransferSummary,
   formatDepositMessage,
+  formatAmount,
   displaySymbol,
 } from '../utils/formatters.js';
 import {
@@ -191,11 +192,13 @@ export async function startTransferFlow(ctx: BotContext): Promise<void> {
 
 /**
  * Start a transfer flow pre-filled from inline mode deep link.
- * Destination is set, user picks source chain → token → amount → recipient.
+ *
+ * With both chains: skips straight to recipient
+ * With dst only: skips to source chain selection
  */
 export async function startTransferFlowPrefilled(
   ctx: BotContext,
-  prefill: { amount: string; dstToken: string; dstChain: string },
+  prefill: { amount: string; srcToken?: string; srcChain?: string; dstToken?: string; dstChain: string },
 ): Promise<void> {
   const from = ctx.from;
   if (!from) return;
@@ -213,23 +216,53 @@ export async function startTransferFlowPrefilled(
   const chains = await getChainsCached();
   state.chains = chains;
 
-  // Set destination
   const dstChainConfig = chains.find(c => c.id === prefill.dstChain);
   if (!dstChainConfig) {
-    // Unknown chain — fall back to normal flow
     await sendStep(ctx, state, `${stepHeader('src_chain')}\n\n🔗 Where are your tokens now?`, chainSelectKeyboard(sortChains(chains), 0, 'src_chain'));
     return;
   }
 
   state.dstChain = prefill.dstChain as ChainId;
-  state.dstToken = prefill.dstToken;
   state.amount = prefill.amount;
 
-  // Skip to source chain selection
+  // Both chains provided — skip to destination token or recipient
+  if (prefill.srcChain) {
+    const srcChainConfig = chains.find(c => c.id === prefill.srcChain);
+    if (srcChainConfig) {
+      state.srcChain = prefill.srcChain as ChainId;
+      state.srcToken = prefill.srcToken ?? prefill.dstToken;
+      state.dstToken = prefill.dstToken ?? prefill.srcToken;
+
+      // If we have src token + dst token, skip to recipient
+      if (state.srcToken && state.dstToken) {
+        state.step = 'recipient';
+        await ctx.reply(
+          `⚡ *Transfer pre-filled:*\n` +
+          `${formatAmount(prefill.amount)} ${displaySymbol(state.srcToken)} (${srcChainConfig.name}) → ${displaySymbol(state.dstToken)} (${dstChainConfig.name})\n`,
+          { parse_mode: 'Markdown' },
+        );
+        await promptRecipient(ctx, state, chains);
+        return;
+      }
+
+      // Have src chain but need token — show token selection
+      state.step = 'src_token';
+      const tokens = await getTokensForChain(state.srcChain);
+      const sorted = sortTokens(tokens, srcChainConfig.nativeToken);
+      await sendStep(ctx, state,
+        `${stepHeader('src_token')}\n\n⚡ Sending to ${dstChainConfig.name}\n\n💰 Which token are you sending from ${srcChainConfig.name}?`,
+        tokenSelectKeyboard(sorted, 0, 'src_token'),
+      );
+      return;
+    }
+  }
+
+  // Destination only — pick source chain
+  state.dstToken = prefill.dstToken;
   state.step = 'src_chain';
   const srcChains = chains.filter(c => c.id !== state.dstChain);
   await sendStep(ctx, state,
-    `${stepHeader('src_chain')}\n\n⚡ Sending ${prefill.amount} → ${displaySymbol(prefill.dstToken)} on ${dstChainConfig.name}\n\n🔗 Where are your tokens now?`,
+    `${stepHeader('src_chain')}\n\n⚡ Sending ${prefill.amount} → ${displaySymbol(prefill.dstToken ?? '?')} on ${dstChainConfig.name}\n\n🔗 Where are your tokens now?`,
     chainSelectKeyboard(sortChains(srcChains), 0, 'src_chain'),
   );
 }
