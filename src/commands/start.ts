@@ -45,6 +45,18 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     return;
   }
 
+  // From group redirect — show welcome with context
+  if (text.includes('from_group')) {
+    await ctx.reply(
+      `⚡ *goBlink*\n\n` +
+      `You're all set! You can now use goBlink in groups and here in DM.\n\n` +
+      `Private commands like /history, /addressbook, and /default work here.\n` +
+      `Transfers and prices work in both groups and DM.`,
+      { parse_mode: 'Markdown', reply_markup: mainMenuKeyboard() },
+    );
+    return;
+  }
+
   // Check for payment link: /start pay_<id>
   const payMatch = text.match(/\/start\s+pay_(\w+)/);
   if (payMatch) {
@@ -54,6 +66,27 @@ export async function startCommand(ctx: BotContext): Promise<void> {
   }
 
   const name = from.first_name || 'there';
+  const chatType = ctx.chat?.type;
+  const inGroup = chatType === 'group' || chatType === 'supergroup';
+
+  if (inGroup) {
+    const { InlineKeyboard } = await import('grammy');
+    const kb = new InlineKeyboard()
+      .text('🔄 New Transfer', 'action:transfer')
+      .text('💸 Request Payment', 'action:request')
+      .row()
+      .text('💰 Prices', 'action:prices')
+      .text('❓ Help', 'action:help')
+      .row()
+      .url('📩 Open DM', 'https://t.me/goBlinkBot');
+
+    await ctx.reply(
+      `⚡ *goBlink* — Move value anywhere, instantly.\n\n` +
+      `Use me here or in DM. Private commands (history, addresses) work in DM only.`,
+      { parse_mode: 'Markdown', reply_markup: kb },
+    );
+    return;
+  }
 
   if (isNew) {
     await ctx.reply(

@@ -158,6 +158,9 @@ If the cross\\-chain swap can't complete \\(e\\.g\\. extreme price movement\\), 
 *Is there a minimum amount?*
 There's no fixed minimum, but very small amounts may not have available routes\\. The bot will tell you if no route is found\\.
 
+*Does goBlink work in group chats?*
+Yes\\! Add @goBlinkBot to any group\\. Transfers, prices, help, and payment requests work in groups\\. Deposit addresses are sent to your DM for privacy\\. Private commands \\(history, addresses, settings\\) redirect to DM\\.
+
 *How do payment request links work?*
 The link encodes what you're requesting\\. Anyone who opens it can pay from any token on any chain — the protocol handles the conversion\\.
 

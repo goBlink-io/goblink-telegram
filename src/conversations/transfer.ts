@@ -629,17 +629,42 @@ async function executeTransfer(ctx: BotContext, state: TransferState, chains: Ch
       transfer.expiresAt,
     );
 
-    const sentMsg = await ctx.reply(depositMsg, {
-      parse_mode: 'Markdown',
-      reply_markup: transferStatusKeyboard(),
-    });
+    // In groups, send deposit address via DM (sensitive info)
+    const chatType = ctx.chat?.type;
+    const inGroup = chatType === 'group' || chatType === 'supergroup';
+    let sentMsg: { message_id: number };
+
+    if (inGroup) {
+      try {
+        sentMsg = await ctx.api.sendMessage(from.id, depositMsg, {
+          parse_mode: 'Markdown',
+          reply_markup: transferStatusKeyboard(),
+        });
+        const { InlineKeyboard } = await import('grammy');
+        await ctx.reply(
+          `✅ Transfer created! I sent the deposit details to your DM, ${from.first_name ?? 'there'}.`,
+          { reply_markup: new InlineKeyboard().url('📩 Open DM', 'https://t.me/goBlinkBot') },
+        );
+      } catch {
+        // Can't DM — fall back to group (user hasn't started bot in DM)
+        sentMsg = await ctx.reply(depositMsg, {
+          parse_mode: 'Markdown',
+          reply_markup: transferStatusKeyboard(),
+        });
+      }
+    } else {
+      sentMsg = await ctx.reply(depositMsg, {
+        parse_mode: 'Markdown',
+        reply_markup: transferStatusKeyboard(),
+      });
+    }
 
     // Save to DB
     try {
       const user = await createOrUpdateUser(from.id, from.username, from.first_name);
       await createTransfer({
         user_id: user.id,
-        chat_id: ctx.chat?.id ?? from.id,
+        chat_id: inGroup ? from.id : (ctx.chat?.id ?? from.id), // always track DM chat for status updates
         message_id: sentMsg.message_id,
         source_chain: state.srcChain!,
         source_token: state.srcToken!,
@@ -708,7 +733,13 @@ async function promptRecipient(ctx: BotContext, state: TransferState, chains: Ch
     }
   } catch { /* ignore, fall through to plain prompt */ }
 
-  await ctx.reply(`${header}📬 Who's receiving? Enter a ${destConfig.name} address:`);
+  const chatType = ctx.chat?.type;
+  const replyHint = (chatType === 'group' || chatType === 'supergroup')
+    ? '\n\n💡 _Reply to this message with the address._'
+    : '';
+  await ctx.reply(`${header}📬 Who's receiving? Enter a ${destConfig.name} address:${replyHint}`, {
+    parse_mode: replyHint ? 'Markdown' : undefined,
+  });
 }
 
 // --- Handle recipient being set (advance to refund or confirm) ---
@@ -775,5 +806,9 @@ async function handleRecipientSet(ctx: BotContext, state: TransferState, chains:
 
   // No saved addresses — ask manually
   state.step = 'refund';
-  await ctx.reply(`${stepHeader('refund')}\n\n🔙 Enter your ${srcConfig.name} address for refunds (if anything goes wrong):`);
+  const ct = ctx.chat?.type;
+  const hint = (ct === 'group' || ct === 'supergroup') ? '\n\n💡 _Reply to this message with the address._' : '';
+  await ctx.reply(`${stepHeader('refund')}\n\n🔙 Enter your ${srcConfig.name} address for refunds (if anything goes wrong):${hint}`, {
+    parse_mode: hint ? 'Markdown' : undefined,
+  });
 }

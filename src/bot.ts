@@ -12,6 +12,7 @@ import { repeatCommand, handleRepeatCallback } from './commands/repeat.js';
 import { startRequestFlow, handleRequestCallback, handleRequestText } from './conversations/request.js';
 import { handleInlineQuery } from './inline/handler.js';
 import { detectGoBlinkLinks } from './handlers/link-detector.js';
+import { guardPrivateCommand, isGroup } from './middleware/group-guard.js';
 
 export function createBot(): Bot<BotContext> {
   const bot = new Bot<BotContext>(config.telegramBotToken);
@@ -24,6 +25,15 @@ export function createBot(): Bot<BotContext> {
 
   // Session (in-memory for MVP)
   bot.use(session({ initial: (): SessionData => ({}) }));
+
+  // Guard: redirect private commands to DM in group chats
+  bot.use(async (ctx, next) => {
+    if (ctx.message?.text?.startsWith('/')) {
+      const intercepted = await guardPrivateCommand(ctx);
+      if (intercepted) return;
+    }
+    await next();
+  });
 
   // Commands
   bot.command('start', startCommand);
