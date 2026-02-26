@@ -165,6 +165,11 @@ export function createBot(): Bot<BotContext> {
       await startCommand(ctx);
       return;
     }
+    if (data === 'action:referral') {
+      try { await ctx.answerCallbackQuery(); } catch {}
+      await referralCommand(ctx);
+      return;
+    }
     if (data === 'action:help') {
       try { await ctx.answerCallbackQuery(); } catch {}
       await helpCommand(ctx);

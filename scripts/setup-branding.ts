@@ -65,7 +65,7 @@ async function main() {
 
   // 2. Short description (shown in bot profile card and search results)
   await apiCall('setMyShortDescription', {
-    short_description: '⚡ Move any token across any chain. Instant. Non-custodial. 12 chains, 65+ tokens.',
+    short_description: '⚡ Cross-chain transfers in seconds. 12 chains, 65+ tokens. Non-custodial. Works in groups.',
   });
 
   // 3. Description (shown when user first opens bot / "What can this bot do?")
@@ -74,10 +74,13 @@ async function main() {
       '⚡ goBlink — Move value anywhere, instantly.\n\n' +
       'Transfer tokens across 12 chains with zero complexity. Non-custodial — we never hold your keys.\n\n' +
       '🔄 Cross-chain transfers in seconds\n' +
-      '💸 Request payments via shareable links\n' +
+      '💸 Payment requests via shareable links\n' +
       '💰 Live token prices\n' +
-      '📒 Address book for quick sends\n' +
-      '📋 Full transfer history & tracking\n\n' +
+      '📒 Address book with auto-fill\n' +
+      '🔁 Repeat transfers in one tap\n' +
+      '🔗 Referral tracking & stats\n' +
+      '👥 Works in group chats\n' +
+      '⚡ Inline mode — share transfers from any chat\n\n' +
       'Supported: Ethereum, Solana, Sui, NEAR, Base, Arbitrum, Polygon, BNB, Optimism, Tron, Aptos, Starknet\n\n' +
       'Fees: 0.35% under $5K · 0.10% $5K-$50K · 0.05% over $50K\n\n' +
       'goblink.io',

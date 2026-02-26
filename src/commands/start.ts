@@ -112,11 +112,13 @@ export async function startCommand(ctx: BotContext): Promise<void> {
     await ctx.reply(
       `⚡ *goBlink*\n\n` +
       `Hey ${name}! Welcome to goBlink — the fastest way to move tokens across chains.\n\n` +
-      `🔄 Transfer between 12 chains\n` +
-      `💸 Request payments via shareable links\n` +
-      `📒 Save addresses for quick sends\n` +
-      `💰 Live token prices\n\n` +
-      `Non-custodial · 65+ tokens · Instant\n\n` +
+      `🔄 Cross-chain transfers across 12 chains\n` +
+      `💸 Payment requests via shareable links\n` +
+      `📒 Address book with auto-fill\n` +
+      `💰 Live token prices\n` +
+      `🔁 Repeat transfers in one tap\n` +
+      `🔗 Referral program — /referral\n\n` +
+      `Non-custodial · 65+ tokens · Works in groups\n\n` +
       `Tap a button to get started:`,
       { parse_mode: 'Markdown', reply_markup: mainMenuKeyboard() },
     );

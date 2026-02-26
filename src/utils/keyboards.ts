@@ -15,6 +15,8 @@ export function mainMenuKeyboard(): InlineKeyboard {
     .text('💰 Prices', 'action:prices')
     .row()
     .text('📒 Addresses', 'action:addressbook')
+    .text('🔗 Referral', 'action:referral')
+    .row()
     .text('❓ Help', 'action:help');
 }
 
