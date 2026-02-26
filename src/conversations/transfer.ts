@@ -12,12 +12,14 @@ import {
   amountKeyboard,
   confirmKeyboard,
   transferStatusKeyboard,
+  mainMenuKeyboard,
   sortChains,
   sortTokens,
 } from '../utils/keyboards.js';
 import {
   formatTransferSummary,
   formatDepositMessage,
+  displaySymbol,
 } from '../utils/formatters.js';
 import {
   checkTransferLimit,
@@ -55,6 +57,30 @@ export interface TransferState {
 
 function newTransferState(): TransferState {
   return { step: 'src_chain', page: 0 };
+}
+
+// --- Step labels (Fix #1: step counter + Fix #3: human-friendly wording) ---
+const STEP_LABELS: Record<TransferStep, { num: number; total: number; label: string }> = {
+  src_chain:  { num: 1, total: 6, label: 'Send from' },
+  src_token:  { num: 2, total: 6, label: 'Select token' },
+  dst_chain:  { num: 3, total: 6, label: 'Send to' },
+  dst_token:  { num: 4, total: 6, label: 'Select token' },
+  amount:     { num: 5, total: 6, label: 'Amount' },
+  recipient:  { num: 5, total: 6, label: 'Recipient' },
+  refund:     { num: 5, total: 6, label: 'Refund address' },
+  confirm:    { num: 6, total: 6, label: 'Confirm' },
+  done:       { num: 6, total: 6, label: 'Done' },
+};
+
+function stepHeader(step: TransferStep): string {
+  const s = STEP_LABELS[step];
+  const bar = '●'.repeat(s.num) + '○'.repeat(s.total - s.num);
+  return `${bar}  Step ${s.num}/${s.total} · ${s.label}`;
+}
+
+/** Fire typing indicator — best-effort, non-blocking */
+function sendTyping(ctx: BotContext): void {
+  ctx.replyWithChatAction('typing').catch(() => {});
 }
 
 // --- Cached data ---
@@ -111,10 +137,11 @@ export async function startTransferFlow(ctx: BotContext): Promise<void> {
   const state = newTransferState();
   ctx.session.transferState = state;
 
+  sendTyping(ctx);
   const chains = await getChains();
   state.chains = chains;
 
-  await sendStep(ctx, state, '🔗 Select source chain:', chainSelectKeyboard(sortChains(chains), 0, 'src_chain'));
+  await sendStep(ctx, state, `${stepHeader('src_chain')}\n\n🔗 Where are your tokens now?`, chainSelectKeyboard(sortChains(chains), 0, 'src_chain'));
 }
 
 // --- Handle all transfer-related callbacks ---
@@ -129,10 +156,10 @@ export async function handleTransferCallback(ctx: BotContext, data: string): Pro
 
   const chains = state.chains ?? await getChains();
 
-  // --- Cancel ---
+  // --- Cancel --- (Fix #5: menu keyboard on cancel)
   if (data === 'action:cancel') {
     ctx.session.transferState = undefined;
-    await ctx.reply('Transfer cancelled.');
+    await ctx.reply('Transfer cancelled.', { reply_markup: mainMenuKeyboard() });
     return;
   }
 
@@ -142,13 +169,13 @@ export async function handleTransferCallback(ctx: BotContext, data: string): Pro
       state.step = 'src_chain';
       state.srcChain = undefined;
       state.page = 0;
-      await sendStep(ctx, state, '🔗 Select source chain:', chainSelectKeyboard(sortChains(chains), 0, 'src_chain'));
+      await sendStep(ctx, state, `${stepHeader('src_chain')}\n\n🔗 Where are your tokens now?`, chainSelectKeyboard(sortChains(chains), 0, 'src_chain'));
     } else if (state.step === 'dst_token') {
       state.step = 'dst_chain';
       state.dstChain = undefined;
       state.page = 0;
       const destChains = chains.filter((c) => c.id !== state.srcChain);
-      await sendStep(ctx, state, '🎯 Select destination chain:', chainSelectKeyboard(sortChains(destChains), 0, 'dst_chain'));
+      await sendStep(ctx, state, `${stepHeader('dst_chain')}\n\n🎯 Where should they go?`, chainSelectKeyboard(sortChains(destChains), 0, 'dst_chain'));
     }
     return;
   }
@@ -160,18 +187,18 @@ export async function handleTransferCallback(ctx: BotContext, data: string): Pro
     state.page = page;
 
     if (state.step === 'src_chain') {
-      await sendStep(ctx, state, '🔗 Select source chain:', chainSelectKeyboard(sortChains(chains), page, 'src_chain'));
+      await sendStep(ctx, state, `${stepHeader('src_chain')}\n\n🔗 Where are your tokens now?`, chainSelectKeyboard(sortChains(chains), page, 'src_chain'));
     } else if (state.step === 'src_token' && state.tokens) {
       const chainConfig = chains.find((c) => c.id === state.srcChain)!;
       const sorted = sortTokens(state.tokens, chainConfig.nativeToken);
-      await sendStep(ctx, state, `💎 Select token on ${chainConfig.name}:`, tokenSelectKeyboard(sorted, page, 'src_token'));
+      await sendStep(ctx, state, `${stepHeader('src_token')}\n\n💎 Select token on ${chainConfig.name}:`, tokenSelectKeyboard(sorted, page, 'src_token'));
     } else if (state.step === 'dst_chain') {
       const destChains = chains.filter((c) => c.id !== state.srcChain);
-      await sendStep(ctx, state, '🎯 Select destination chain:', chainSelectKeyboard(sortChains(destChains), page, 'dst_chain'));
+      await sendStep(ctx, state, `${stepHeader('dst_chain')}\n\n🎯 Where should they go?`, chainSelectKeyboard(sortChains(destChains), page, 'dst_chain'));
     } else if (state.step === 'dst_token' && state.tokens) {
       const chainConfig = chains.find((c) => c.id === state.dstChain)!;
       const sorted = sortTokens(state.tokens, chainConfig.nativeToken);
-      await sendStep(ctx, state, `💎 Select token on ${chainConfig.name}:`, tokenSelectKeyboard(sorted, page, 'dst_token'));
+      await sendStep(ctx, state, `${stepHeader('dst_token')}\n\n💎 Select token on ${chainConfig.name}:`, tokenSelectKeyboard(sorted, page, 'dst_token'));
     }
     return;
   }
@@ -183,11 +210,12 @@ export async function handleTransferCallback(ctx: BotContext, data: string): Pro
     state.step = 'src_token';
     state.page = 0;
 
+    sendTyping(ctx);
     const chainConfig = chains.find((c) => c.id === chainId)!;
     const tokens = await getTokensForChain(chainId);
     state.tokens = tokens;
     const sorted = sortTokens(tokens, chainConfig.nativeToken);
-    await sendStep(ctx, state, `💎 Select token on ${chainConfig.name}:`, tokenSelectKeyboard(sorted, 0, 'src_token'));
+    await sendStep(ctx, state, `${stepHeader('src_token')}\n\n💎 Which token on ${chainConfig.name}?`, tokenSelectKeyboard(sorted, 0, 'src_token'));
     return;
   }
 
@@ -199,7 +227,7 @@ export async function handleTransferCallback(ctx: BotContext, data: string): Pro
     state.tokens = undefined;
 
     const destChains = chains.filter((c) => c.id !== state.srcChain);
-    await sendStep(ctx, state, '🎯 Select destination chain:', chainSelectKeyboard(sortChains(destChains), 0, 'dst_chain'));
+    await sendStep(ctx, state, `${stepHeader('dst_chain')}\n\n🎯 Where should they go?`, chainSelectKeyboard(sortChains(destChains), 0, 'dst_chain'));
     return;
   }
 
@@ -210,11 +238,12 @@ export async function handleTransferCallback(ctx: BotContext, data: string): Pro
     state.step = 'dst_token';
     state.page = 0;
 
+    sendTyping(ctx);
     const chainConfig = chains.find((c) => c.id === chainId)!;
     const tokens = await getTokensForChain(chainId);
     state.tokens = tokens;
     const sorted = sortTokens(tokens, chainConfig.nativeToken);
-    await sendStep(ctx, state, `💎 Select token on ${chainConfig.name}:`, tokenSelectKeyboard(sorted, 0, 'dst_token'));
+    await sendStep(ctx, state, `${stepHeader('dst_token')}\n\n💎 Which token on ${chainConfig.name}?`, tokenSelectKeyboard(sorted, 0, 'dst_token'));
     return;
   }
 
@@ -232,14 +261,14 @@ export async function handleTransferCallback(ctx: BotContext, data: string): Pro
       price = tokenInfo?.price;
     } catch { /* ignore */ }
 
-    await sendStep(ctx, state, `💵 Enter amount of ${state.srcToken} to send:`, amountKeyboard(state.srcToken!, price));
+    await sendStep(ctx, state, `${stepHeader('amount')}\n\n💵 How much ${displaySymbol(state.srcToken!)} to send?`, amountKeyboard(state.srcToken!, price));
     return;
   }
 
   // --- Amount presets ---
   if (data.startsWith('amount:') && state.step === 'amount') {
     if (data === 'amount:custom') {
-      await ctx.reply(`Type the amount of ${state.srcToken} to send:`);
+      await ctx.reply(`Type the amount of ${displaySymbol(state.srcToken!)} to send:`);
       return;
     }
     state.amount = data.split(':')[1]!;
@@ -255,6 +284,12 @@ export async function handleTransferCallback(ctx: BotContext, data: string): Pro
     return;
   }
 
+  // --- Retry quote ---
+  if (data === 'confirm:retry' && state.step === 'confirm') {
+    await showConfirmation(ctx, state, chains);
+    return;
+  }
+
   // --- Confirm ---
   if (data === 'confirm:yes' && state.step === 'confirm') {
     state.step = 'done';
@@ -265,7 +300,7 @@ export async function handleTransferCallback(ctx: BotContext, data: string): Pro
 
   if (data === 'confirm:no' && state.step === 'confirm') {
     ctx.session.transferState = undefined;
-    await ctx.reply('Transfer cancelled.');
+    await ctx.reply('Transfer cancelled.', { reply_markup: mainMenuKeyboard() });
     return;
   }
 }
@@ -280,7 +315,7 @@ export async function handleTransferText(ctx: BotContext): Promise<boolean> {
 
   if (text === '/cancel') {
     ctx.session.transferState = undefined;
-    await ctx.reply('Transfer cancelled.');
+    await ctx.reply('Transfer cancelled.', { reply_markup: mainMenuKeyboard() });
     return true;
   }
 
@@ -339,6 +374,8 @@ async function showConfirmation(ctx: BotContext, state: TransferState, chains: C
     return;
   }
 
+  sendTyping(ctx);
+
   try {
     const quote = await sdk.getQuote({
       from: { chain: state.srcChain!, token: state.srcToken! },
@@ -358,13 +395,21 @@ async function showConfirmation(ctx: BotContext, state: TransferState, chains: C
       quote,
     );
 
-    await ctx.reply(`${summary}\n\nConfirm this transfer?`, {
+    await ctx.reply(`${stepHeader('confirm')}\n\n${summary}\n\nConfirm this transfer?`, {
       reply_markup: confirmKeyboard(),
     });
-  } catch (err) {
+  } catch (err: any) {
     console.error('Quote failed:', err);
-    await ctx.reply('Something went wrong getting a quote. Please try again.');
-    ctx.session.transferState = undefined;
+    // Fix #4: keep state — let user retry instead of wiping progress
+    const retryKb = new InlineKeyboard()
+      .text('🔄 Retry Quote', 'confirm:retry')
+      .text('✖ Cancel', 'action:cancel');
+    const errMsg = err?.message?.includes('No route')
+      ? 'No route found for this pair/amount. Try a different token or amount.'
+      : err?.message?.includes('timeout') || err?.message?.includes('ETIMEDOUT')
+      ? 'Quote server timed out. Tap Retry.'
+      : 'Couldn\'t get a quote right now. Tap Retry or cancel.';
+    await ctx.reply(`❌ ${errMsg}`, { reply_markup: retryKb });
   }
 }
 
@@ -373,6 +418,7 @@ async function executeTransfer(ctx: BotContext, state: TransferState, chains: Ch
   const sdk = getSDK();
   const from = ctx.from!;
 
+  sendTyping(ctx);
   try {
     const transfer = await sdk.createTransfer({
       from: { chain: state.srcChain!, token: state.srcToken! },
@@ -422,7 +468,7 @@ async function executeTransfer(ctx: BotContext, state: TransferState, chains: Ch
     );
   } catch (err) {
     console.error('Transfer creation failed:', err);
-    await ctx.reply('Something went wrong creating the transfer. Please try again.');
+    await ctx.reply('Something went wrong creating the transfer. Please try again.', { reply_markup: mainMenuKeyboard() });
   }
 }
 
@@ -430,8 +476,9 @@ async function executeTransfer(ctx: BotContext, state: TransferState, chains: Ch
 async function promptRecipient(ctx: BotContext, state: TransferState, chains: ChainConfig[]): Promise<void> {
   const destConfig = chains.find((c) => c.id === state.dstChain)!;
   const from = ctx.from ?? ctx.callbackQuery?.from;
+  const header = `${stepHeader('recipient')}\n\n`;
   if (!from) {
-    await ctx.reply(`📬 Enter the recipient address on ${destConfig.name}:`);
+    await ctx.reply(`${header}📬 Who's receiving? Enter a ${destConfig.name} address:`);
     return;
   }
 
@@ -453,7 +500,7 @@ async function promptRecipient(ctx: BotContext, state: TransferState, chains: Ch
         kb.text('✖ Cancel', 'action:cancel');
 
         await ctx.reply(
-          `📬 Enter the recipient address on ${destConfig.name}, or pick a saved address:`,
+          `${header}📬 Who's receiving on ${destConfig.name}? Pick a saved address or type one:`,
           { reply_markup: kb },
         );
         return;
@@ -461,7 +508,7 @@ async function promptRecipient(ctx: BotContext, state: TransferState, chains: Ch
     }
   } catch { /* ignore, fall through to plain prompt */ }
 
-  await ctx.reply(`📬 Enter the recipient address on ${destConfig.name}:`);
+  await ctx.reply(`${header}📬 Who's receiving? Enter a ${destConfig.name} address:`);
 }
 
 // --- Handle recipient being set (advance to refund or confirm) ---
@@ -473,6 +520,6 @@ async function handleRecipientSet(ctx: BotContext, state: TransferState, chains:
   } else {
     state.step = 'refund';
     const srcConfig = chains.find((c) => c.id === state.srcChain)!;
-    await ctx.reply(`🔙 Enter refund address on ${srcConfig.name} (in case of failure):`);
+    await ctx.reply(`${stepHeader('refund')}\n\n🔙 Enter your ${srcConfig.name} address for refunds (if anything goes wrong):`);
   }
 }

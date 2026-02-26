@@ -9,11 +9,12 @@ const COLS = 3;
 export function mainMenuKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
     .text('🔄 New Transfer', 'action:transfer')
+    .text('💸 Request Payment', 'action:request')
+    .row()
     .text('📋 History', 'action:history')
-    .row()
     .text('💰 Prices', 'action:prices')
-    .text('📒 Addresses', 'action:addressbook')
     .row()
+    .text('📒 Addresses', 'action:addressbook')
     .text('❓ Help', 'action:help');
 }
 

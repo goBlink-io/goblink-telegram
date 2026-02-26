@@ -8,6 +8,17 @@ export function escMd2(text: string): string {
   return text.replace(MD2_SPECIAL, '\\$1');
 }
 
+// --- Symbol normalization (match goblink.io display) ---
+
+const SYMBOL_OVERRIDES: Record<string, string> = {
+  'wNEAR': 'NEAR',
+};
+
+/** Normalize token symbol for display (e.g. wNEAR → NEAR) */
+export function displaySymbol(symbol: string): string {
+  return SYMBOL_OVERRIDES[symbol] ?? symbol;
+}
+
 // --- Amount formatting ---
 
 export function formatAmount(amount: string): string {
@@ -81,9 +92,9 @@ export function formatTransferSummary(
   const lines = [
     `📦 Transfer Summary`,
     ``,
-    `Send: ${formatAmount(amount)} ${sourceToken} (${sourceChain})`,
-    `Receive: ~${formatAmount(quote.amountOut)} ${destToken} (${destChain})`,
-    `Rate: 1 ${sourceToken} = ${quote.rate} ${destToken}`,
+    `Send: ${formatAmount(amount)} ${displaySymbol(sourceToken)} (${sourceChain})`,
+    `Receive: ~${formatAmount(quote.amountOut)} ${displaySymbol(destToken)} (${destChain})`,
+    `Rate: 1 ${displaySymbol(sourceToken)} = ${quote.rate} ${displaySymbol(destToken)}`,
     `${formatFee(quote.fee)}`,
     `Est. time: ${formatTime(quote.estimatedTime)}`,
     ``,
@@ -108,7 +119,7 @@ export function formatDepositMessage(
     `✅ Transfer created!`,
     ``,
     `Send exactly:`,
-    `\`${depositAmount} ${sourceToken}\``,
+    `\`${depositAmount} ${displaySymbol(sourceToken)}\``,
     ``,
     `To this ${sourceChain} address:`,
     `\`${depositAddress}\``,
@@ -137,7 +148,7 @@ export function formatHistoryEntry(
     year: 'numeric',
   });
   const emoji = statusEmoji(status);
-  let line = `${emoji} ${formatAmount(amount)} ${sourceToken} (${sourceChain} → ${destChain}) — ${status}`;
+  let line = `${emoji} ${formatAmount(amount)} ${displaySymbol(sourceToken)} (${sourceChain} → ${destChain}) — ${status}`;
   line += `\n   ${date}`;
   if (txHash) {
     line += ` • TX: ${truncateAddr(txHash)}`;

@@ -32,8 +32,10 @@ export async function addressBookCommand(ctx: BotContext): Promise<void> {
         : entry.address;
       lines.push(`*${entry.label}* (${entry.chain})\n\`${entry.address}\``);
       lines.push('');
-      kb.text(`❌ ${entry.label}`, `addr_del:${entry.id}`).row();
+      kb.text(`❌ ${entry.label} (${entry.chain})`, `addr_del:${entry.id}`).row();
     }
+
+    kb.text('« Back to Menu', 'menu:main').row();
 
     lines.push(`_${addresses.length} address${addresses.length === 1 ? '' : 'es'} saved_`);
 

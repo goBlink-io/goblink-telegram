@@ -3,6 +3,7 @@ import type { ChainId, ChainConfig, Token } from '@urban-blazer/goblink-sdk';
 
 export interface SessionData {
   transferState?: TransferState;
+  requestState?: RequestState;
 }
 
 export type TransferStep =
@@ -25,6 +26,27 @@ export interface TransferState {
   amount?: string;
   recipient?: string;
   refundAddress?: string;
+  page: number;
+  chains?: ChainConfig[];
+  tokens?: Token[];
+  lastMessageId?: number;
+}
+
+export type RequestStep =
+  | 'chain'
+  | 'token'
+  | 'amount'
+  | 'address'
+  | 'memo'
+  | 'done';
+
+export interface RequestState {
+  step: RequestStep;
+  chain?: ChainId;
+  token?: string;
+  amount?: string;
+  address?: string;
+  memo?: string;
   page: number;
   chains?: ChainConfig[];
   tokens?: Token[];
