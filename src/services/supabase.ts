@@ -120,20 +120,39 @@ export async function getUserTransfers(
   return (data as TgTransfer[]) ?? [];
 }
 
-// --- Address Book (Phase 2 stubs) ---
+// --- Address Book ---
 
 export async function saveAddress(
-  _userId: string,
-  _label: string,
-  _chain: string,
-  _address: string,
+  userId: string,
+  label: string,
+  chain: string,
+  address: string,
 ): Promise<void> {
-  // Phase 2
+  const db = getSupabase();
+  const { error } = await db.from('tg_address_book').insert({
+    user_id: userId,
+    label,
+    chain,
+    address,
+  });
+  if (error) throw new Error(`Failed to save address: ${error.message}`);
 }
 
 export async function getAddresses(
-  _userId: string,
+  userId: string,
 ): Promise<TgAddressEntry[]> {
-  // Phase 2
-  return [];
+  const db = getSupabase();
+  const { data, error } = await db
+    .from('tg_address_book')
+    .select()
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(`Failed to get addresses: ${error.message}`);
+  return (data as TgAddressEntry[]) ?? [];
+}
+
+export async function deleteAddress(id: string): Promise<void> {
+  const db = getSupabase();
+  const { error } = await db.from('tg_address_book').delete().eq('id', id);
+  if (error) throw new Error(`Failed to delete address: ${error.message}`);
 }

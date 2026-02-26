@@ -12,6 +12,8 @@ export function mainMenuKeyboard(): InlineKeyboard {
     .text('📋 History', 'action:history')
     .row()
     .text('💰 Prices', 'action:prices')
+    .text('📒 Addresses', 'action:addressbook')
+    .row()
     .text('❓ Help', 'action:help');
 }
 
@@ -74,22 +76,41 @@ export function tokenSelectKeyboard(
   if (page < totalPages - 1) {
     kb.text('More ▸', `page:${callbackPrefix}:${page + 1}`);
   }
-  kb.row().text('✖ Cancel', 'action:cancel');
+  kb.row().text('◂ Back to Chains', 'action:back_to_chains');
 
   return kb;
 }
 
 // --- Amount Presets ---
 
-export function amountKeyboard(): InlineKeyboard {
-  return new InlineKeyboard()
-    .text('$50', 'amount:50')
-    .text('$100', 'amount:100')
-    .text('$500', 'amount:500')
-    .row()
-    .text('✏️ Custom', 'amount:custom')
-    .row()
-    .text('✖ Cancel', 'action:cancel');
+/**
+ * Clean amount presets based on token price tier.
+ */
+export function amountKeyboard(tokenSymbol: string, price?: number): InlineKeyboard {
+  const presets = getAmountPresets(tokenSymbol, price);
+  const kb = new InlineKeyboard();
+
+  for (let i = 0; i < presets.length; i++) {
+    kb.text(presets[i]!, `amount:${presets[i]}`);
+    if ((i + 1) % 4 === 0 && i < presets.length - 1) kb.row();
+  }
+
+  kb.row().text('✏️ Custom', 'amount:custom');
+  kb.row().text('✖ Cancel', 'action:cancel');
+  return kb;
+}
+
+function getAmountPresets(_symbol: string, price?: number): string[] {
+  if (!price || price <= 0) return ['1', '5', '10', '50'];
+
+  // Pick clean round numbers based on price per token
+  if (price >= 10000)  return ['0.001', '0.005', '0.01', '0.05'];   // BTC
+  if (price >= 1000)   return ['0.01', '0.05', '0.1', '0.5'];       // ETH
+  if (price >= 100)    return ['0.1', '0.5', '1', '5'];              // BNB, SOL-like
+  if (price >= 10)     return ['1', '5', '10', '50'];                // mid-range
+  if (price >= 0.5)    return ['5', '10', '50', '100'];              // NEAR, SUI, XRP
+  if (price >= 0.01)   return ['50', '100', '500', '1000'];          // low-price
+  return ['100', '500', '1000', '5000'];                             // micro-price
 }
 
 // --- Confirm / Cancel ---

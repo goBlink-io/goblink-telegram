@@ -1,7 +1,10 @@
-import type { Context } from 'grammy';
-import type { Conversation } from '@grammyjs/conversations';
+/**
+ * Transfer flow — state machine approach (no grammY conversations plugin).
+ * Each step handles its own callback queries and advances the state.
+ */
+import { InlineKeyboard } from 'grammy';
 import type { BotContext } from '../types/index.js';
-import type { ChainId, ChainConfig, Token, QuoteResponse } from '@urban-blazer/goblink-sdk';
+import type { ChainId, ChainConfig, Token } from '@urban-blazer/goblink-sdk';
 import { getSDK } from '../services/goblink.js';
 import {
   chainSelectKeyboard,
@@ -15,7 +18,6 @@ import {
 import {
   formatTransferSummary,
   formatDepositMessage,
-  truncateAddr,
 } from '../utils/formatters.js';
 import {
   checkTransferLimit,
@@ -23,388 +25,370 @@ import {
   formatRetryAfter,
 } from '../utils/rate-limiter.js';
 import { isActiveChain, filterTokensBySymbol } from '../utils/filters.js';
-import { createOrUpdateUser, createTransfer } from '../services/supabase.js';
+import { createOrUpdateUser, createTransfer, getUser, getAddresses } from '../services/supabase.js';
 
-type TransferConversation = Conversation<BotContext, Context>;
+export type TransferStep =
+  | 'src_chain'
+  | 'src_token'
+  | 'dst_chain'
+  | 'dst_token'
+  | 'amount'
+  | 'recipient'
+  | 'refund'
+  | 'confirm'
+  | 'done';
 
-// --- Helpers to wait for callback matching a prefix ---
-
-async function waitForChainSelection(
-  conversation: TransferConversation,
-  ctx: Context,
-  chains: ChainConfig[],
-  prefix: string,
-  prompt: string,
-): Promise<ChainId | null> {
-  const sorted = sortChains(chains);
-  let page = 0;
-
-  let lastMsg = await ctx.reply(prompt, {
-    reply_markup: chainSelectKeyboard(sorted, page, prefix),
-  });
-
-  while (true) {
-    const resp = await conversation.wait({
-      maxMilliseconds: 300_000,
-    });
-
-    if (resp.callbackQuery?.data) {
-      const data = resp.callbackQuery.data;
-      try { await resp.answerCallbackQuery(); } catch { /* ignore stale */ }
-
-      if (data === 'action:cancel') return null;
-
-      if (data.startsWith(`page:${prefix}:`)) {
-        const parts = data.split(':');
-        page = parseInt(parts[parts.length - 1]!, 10);
-        try { await ctx.api.deleteMessage(lastMsg.chat.id, lastMsg.message_id); } catch { /* ignore */ }
-        lastMsg = await ctx.reply(prompt, {
-          reply_markup: chainSelectKeyboard(sorted, page, prefix),
-        });
-        continue;
-      }
-
-      if (data.startsWith(`${prefix}:`)) {
-        const parts = data.split(':');
-        return parts[parts.length - 1] as ChainId;
-      }
-    }
-
-    if (resp.message?.text === '/cancel') return null;
-
-    await resp.reply('Please tap a chain button above, or /cancel to stop.');
-  }
+export interface TransferState {
+  step: TransferStep;
+  srcChain?: ChainId;
+  srcToken?: string;
+  dstChain?: ChainId;
+  dstToken?: string;
+  amount?: string;
+  recipient?: string;
+  refundAddress?: string;
+  page: number;
+  chains?: ChainConfig[];
+  tokens?: Token[];
+  lastMessageId?: number;
 }
 
-async function waitForTokenSelection(
-  conversation: TransferConversation,
-  ctx: Context,
-  chain: ChainId,
-  nativeSymbol: string,
-  prefix: string,
-  prompt: string,
-): Promise<string | null> {
+function newTransferState(): TransferState {
+  return { step: 'src_chain', page: 0 };
+}
+
+// --- Cached data ---
+let cachedChains: ChainConfig[] | null = null;
+let chainsCacheTime = 0;
+const CHAINS_TTL = 300_000; // 5 min
+
+async function getChains(): Promise<ChainConfig[]> {
+  if (cachedChains && Date.now() - chainsCacheTime < CHAINS_TTL) return cachedChains;
   const sdk = getSDK();
-  const allTokens = await conversation.external(() => sdk.getTokens({ chain }));
-  const tokens = filterTokensBySymbol(allTokens);
-  const sorted = sortTokens(tokens, nativeSymbol);
-  let page = 0;
-
-  let lastMsg = await ctx.reply(prompt, {
-    reply_markup: tokenSelectKeyboard(sorted, page, prefix),
-  });
-
-  while (true) {
-    const resp = await conversation.wait({
-      maxMilliseconds: 300_000,
-    });
-
-    if (resp.callbackQuery?.data) {
-      const data = resp.callbackQuery.data;
-      try { await resp.answerCallbackQuery(); } catch { /* ignore stale */ }
-
-      if (data === 'action:cancel') return null;
-
-      if (data.startsWith(`page:${prefix}:`)) {
-        const parts = data.split(':');
-        page = parseInt(parts[parts.length - 1]!, 10);
-        try { await ctx.api.deleteMessage(lastMsg.chat.id, lastMsg.message_id); } catch { /* ignore */ }
-        lastMsg = await ctx.reply(prompt, {
-          reply_markup: tokenSelectKeyboard(sorted, page, prefix),
-        });
-        continue;
-      }
-
-      if (data.startsWith(`${prefix}:`)) {
-        const parts = data.split(':');
-        return parts[parts.length - 1]!;
-      }
-    }
-
-    if (resp.message?.text === '/cancel') return null;
-
-    await resp.reply('Please tap a token button above, or /cancel to stop.');
-  }
+  const all = sdk.getChains();
+  cachedChains = all.filter((c) => isActiveChain(c.id));
+  chainsCacheTime = Date.now();
+  return cachedChains;
 }
 
-// --- Main transfer conversation ---
+async function getTokensForChain(chain: ChainId): Promise<Token[]> {
+  const sdk = getSDK();
+  const all = await sdk.getTokens({ chain });
+  return filterTokensBySymbol(all);
+}
 
-export async function transferConversation(
-  conversation: TransferConversation,
-  ctx: Context,
-): Promise<void> {
-  const from = ctx.from;
-  if (!from) {
-    await ctx.reply('Could not identify you. Please try again.');
-    return;
+// --- Send/edit step message (edits in-place when possible) ---
+async function sendStep(ctx: BotContext, state: TransferState, text: string, markup: unknown): Promise<void> {
+  const chatId = ctx.chat?.id;
+  if (!chatId) return;
+
+  if (state.lastMessageId) {
+    try {
+      await ctx.api.editMessageText(chatId, state.lastMessageId, text, {
+        reply_markup: markup as any,
+      });
+      return; // Successfully edited in-place
+    } catch {
+      // Edit failed (message too old, deleted, or type mismatch) — send new
+    }
   }
 
-  // Rate limit check
+  const msg = await ctx.reply(text, { reply_markup: markup as any });
+  state.lastMessageId = msg.message_id;
+}
+
+// --- Start transfer flow ---
+export async function startTransferFlow(ctx: BotContext): Promise<void> {
+  const from = ctx.from;
+  if (!from) return;
+
   const limit = checkTransferLimit(from.id);
   if (!limit.allowed) {
-    await ctx.reply(
-      `⏳ Slow down! Try again in ${formatRetryAfter(limit.retryAfterMs)}.`,
-    );
+    await ctx.reply(`⏳ Slow down! Try again in ${formatRetryAfter(limit.retryAfterMs)}.`);
     return;
   }
 
-  const sdk = getSDK();
-  const allChains = await conversation.external(() => sdk.getChains());
-  const chains = allChains.filter((c) => isActiveChain(c.id));
+  const state = newTransferState();
+  ctx.session.transferState = state;
 
-  // Step 1: Source chain
-  const sourceChain = await waitForChainSelection(
-    conversation,
-    ctx,
-    chains,
-    'src_chain',
-    '🔗 Select source chain:',
-  );
-  if (!sourceChain) {
+  const chains = await getChains();
+  state.chains = chains;
+
+  await sendStep(ctx, state, '🔗 Select source chain:', chainSelectKeyboard(sortChains(chains), 0, 'src_chain'));
+}
+
+// --- Handle all transfer-related callbacks ---
+export async function handleTransferCallback(ctx: BotContext, data: string): Promise<void> {
+  const state = ctx.session.transferState;
+  if (!state) {
+    await ctx.reply('No active transfer. Use /transfer to start.');
+    return;
+  }
+
+  try { await ctx.answerCallbackQuery(); } catch { /* stale */ }
+
+  const chains = state.chains ?? await getChains();
+
+  // --- Cancel ---
+  if (data === 'action:cancel') {
+    ctx.session.transferState = undefined;
     await ctx.reply('Transfer cancelled.');
     return;
   }
 
-  const sourceChainConfig = chains.find((c) => c.id === sourceChain)!;
-
-  // Step 2: Source token
-  const sourceToken = await waitForTokenSelection(
-    conversation,
-    ctx,
-    sourceChain,
-    sourceChainConfig.nativeToken,
-    'src_token',
-    `💎 Select token on ${sourceChainConfig.name}:`,
-  );
-  if (!sourceToken) {
-    await ctx.reply('Transfer cancelled.');
-    return;
-  }
-
-  // Step 3: Destination chain (exclude source)
-  const destChains = chains.filter((c) => c.id !== sourceChain);
-  const destChain = await waitForChainSelection(
-    conversation,
-    ctx,
-    destChains,
-    'dst_chain',
-    '🎯 Select destination chain:',
-  );
-  if (!destChain) {
-    await ctx.reply('Transfer cancelled.');
-    return;
-  }
-
-  const destChainConfig = chains.find((c) => c.id === destChain)!;
-
-  // Step 4: Destination token
-  const destToken = await waitForTokenSelection(
-    conversation,
-    ctx,
-    destChain,
-    destChainConfig.nativeToken,
-    'dst_token',
-    `💎 Select token on ${destChainConfig.name}:`,
-  );
-  if (!destToken) {
-    await ctx.reply('Transfer cancelled.');
-    return;
-  }
-
-  // Step 5: Amount
-  await ctx.reply(
-    `💵 Enter amount of ${sourceToken} to send (or pick a preset):`,
-    { reply_markup: amountKeyboard() },
-  );
-
-  let amount: string | null = null;
-  let waitingForCustom = false;
-
-  while (!amount) {
-    const resp = await conversation.wait({ maxMilliseconds: 300_000 });
-
-    if (resp.callbackQuery?.data) {
-      const data = resp.callbackQuery.data;
-      try { await resp.answerCallbackQuery(); } catch { /* ignore stale */ }
-
-      if (data === 'action:cancel') {
-        await ctx.reply('Transfer cancelled.');
-        return;
-      }
-
-      if (data === 'amount:custom') {
-        waitingForCustom = true;
-        await resp.reply(`Type the amount of ${sourceToken} to send:`);
-        continue;
-      }
-
-      if (data.startsWith('amount:')) {
-        amount = data.split(':')[1]!;
-      }
-    } else if (resp.message?.text) {
-      if (resp.message.text === '/cancel') {
-        await ctx.reply('Transfer cancelled.');
-        return;
-      }
-      if (waitingForCustom || /^\d+(\.\d+)?$/.test(resp.message.text)) {
-        const parsed = parseFloat(resp.message.text);
-        if (isNaN(parsed) || parsed <= 0) {
-          await resp.reply('Please enter a valid positive number.');
-          continue;
-        }
-        amount = resp.message.text;
-      } else {
-        await resp.reply('Tap a preset button or type a number, or /cancel.');
-      }
+  // --- Back to chains (from token selection) ---
+  if (data === 'action:back_to_chains') {
+    if (state.step === 'src_token') {
+      state.step = 'src_chain';
+      state.srcChain = undefined;
+      state.page = 0;
+      await sendStep(ctx, state, '🔗 Select source chain:', chainSelectKeyboard(sortChains(chains), 0, 'src_chain'));
+    } else if (state.step === 'dst_token') {
+      state.step = 'dst_chain';
+      state.dstChain = undefined;
+      state.page = 0;
+      const destChains = chains.filter((c) => c.id !== state.srcChain);
+      await sendStep(ctx, state, '🎯 Select destination chain:', chainSelectKeyboard(sortChains(destChains), 0, 'dst_chain'));
     }
+    return;
   }
 
-  // Step 6: Recipient address
-  await ctx.reply(
-    `📬 Enter the recipient address on ${destChainConfig.name}:`,
-  );
+  // --- Pagination ---
+  if (data.startsWith('page:')) {
+    const parts = data.split(':');
+    const page = parseInt(parts[parts.length - 1]!, 10);
+    state.page = page;
 
-  let recipient: string | null = null;
-  while (!recipient) {
-    const resp = await conversation.waitFor('message:text', {
-      otherwise: (c) => c.reply('Please send a text address.'),
-    });
+    if (state.step === 'src_chain') {
+      await sendStep(ctx, state, '🔗 Select source chain:', chainSelectKeyboard(sortChains(chains), page, 'src_chain'));
+    } else if (state.step === 'src_token' && state.tokens) {
+      const chainConfig = chains.find((c) => c.id === state.srcChain)!;
+      const sorted = sortTokens(state.tokens, chainConfig.nativeToken);
+      await sendStep(ctx, state, `💎 Select token on ${chainConfig.name}:`, tokenSelectKeyboard(sorted, page, 'src_token'));
+    } else if (state.step === 'dst_chain') {
+      const destChains = chains.filter((c) => c.id !== state.srcChain);
+      await sendStep(ctx, state, '🎯 Select destination chain:', chainSelectKeyboard(sortChains(destChains), page, 'dst_chain'));
+    } else if (state.step === 'dst_token' && state.tokens) {
+      const chainConfig = chains.find((c) => c.id === state.dstChain)!;
+      const sorted = sortTokens(state.tokens, chainConfig.nativeToken);
+      await sendStep(ctx, state, `💎 Select token on ${chainConfig.name}:`, tokenSelectKeyboard(sorted, page, 'dst_token'));
+    }
+    return;
+  }
 
-    if (resp.message.text === '/cancel') {
-      await ctx.reply('Transfer cancelled.');
+  // --- Source chain selected ---
+  if (data.startsWith('src_chain:') && state.step === 'src_chain') {
+    const chainId = data.split(':')[1] as ChainId;
+    state.srcChain = chainId;
+    state.step = 'src_token';
+    state.page = 0;
+
+    const chainConfig = chains.find((c) => c.id === chainId)!;
+    const tokens = await getTokensForChain(chainId);
+    state.tokens = tokens;
+    const sorted = sortTokens(tokens, chainConfig.nativeToken);
+    await sendStep(ctx, state, `💎 Select token on ${chainConfig.name}:`, tokenSelectKeyboard(sorted, 0, 'src_token'));
+    return;
+  }
+
+  // --- Source token selected ---
+  if (data.startsWith('src_token:') && state.step === 'src_token') {
+    state.srcToken = data.split(':')[1]!;
+    state.step = 'dst_chain';
+    state.page = 0;
+    state.tokens = undefined;
+
+    const destChains = chains.filter((c) => c.id !== state.srcChain);
+    await sendStep(ctx, state, '🎯 Select destination chain:', chainSelectKeyboard(sortChains(destChains), 0, 'dst_chain'));
+    return;
+  }
+
+  // --- Dest chain selected ---
+  if (data.startsWith('dst_chain:') && state.step === 'dst_chain') {
+    const chainId = data.split(':')[1] as ChainId;
+    state.dstChain = chainId;
+    state.step = 'dst_token';
+    state.page = 0;
+
+    const chainConfig = chains.find((c) => c.id === chainId)!;
+    const tokens = await getTokensForChain(chainId);
+    state.tokens = tokens;
+    const sorted = sortTokens(tokens, chainConfig.nativeToken);
+    await sendStep(ctx, state, `💎 Select token on ${chainConfig.name}:`, tokenSelectKeyboard(sorted, 0, 'dst_token'));
+    return;
+  }
+
+  // --- Dest token selected ---
+  if (data.startsWith('dst_token:') && state.step === 'dst_token') {
+    state.dstToken = data.split(':')[1]!;
+    state.step = 'amount';
+    state.tokens = undefined;
+
+    // Look up source token price for smart presets
+    let price: number | undefined;
+    try {
+      const srcTokens = await getTokensForChain(state.srcChain!);
+      const tokenInfo = srcTokens.find((t) => t.symbol === state.srcToken);
+      price = tokenInfo?.price;
+    } catch { /* ignore */ }
+
+    await sendStep(ctx, state, `💵 Enter amount of ${state.srcToken} to send:`, amountKeyboard(state.srcToken!, price));
+    return;
+  }
+
+  // --- Amount presets ---
+  if (data.startsWith('amount:') && state.step === 'amount') {
+    if (data === 'amount:custom') {
+      await ctx.reply(`Type the amount of ${state.srcToken} to send:`);
       return;
     }
-
-    const addr = resp.message.text.trim();
-    const valid = await conversation.external(() =>
-      sdk.validateAddress(destChain, addr),
-    );
-    if (!valid) {
-      await resp.reply(
-        `Invalid ${destChainConfig.name} address. Please try again.`,
-      );
-      continue;
-    }
-    recipient = addr;
-  }
-
-  // Step 7: Refund address
-  let refundAddress: string;
-  if (sourceChain === destChain) {
-    refundAddress = recipient;
-    await ctx.reply(`Refund address set to recipient (same chain).`);
-  } else {
-    await ctx.reply(
-      `🔙 Enter refund address on ${sourceChainConfig.name} (in case of failure):`,
-    );
-
-    let refund: string | null = null;
-    while (!refund) {
-      const resp = await conversation.waitFor('message:text', {
-        otherwise: (c) => c.reply('Please send a text address.'),
-      });
-
-      if (resp.message.text === '/cancel') {
-        await ctx.reply('Transfer cancelled.');
-        return;
-      }
-
-      const addr = resp.message.text.trim();
-      const valid = await conversation.external(() =>
-        sdk.validateAddress(sourceChain, addr),
-      );
-      if (!valid) {
-        await resp.reply(
-          `Invalid ${sourceChainConfig.name} address. Please try again.`,
-        );
-        continue;
-      }
-      refund = addr;
-    }
-    refundAddress = refund;
-  }
-
-  // Step 8: Get quote & show confirmation
-  const quoteLimit = checkQuoteLimit(from.id);
-  if (!quoteLimit.allowed) {
-    await ctx.reply(
-      `⏳ Slow down! Try again in ${formatRetryAfter(quoteLimit.retryAfterMs)}.`,
-    );
+    state.amount = data.split(':')[1]!;
+    state.step = 'recipient';
+    await promptRecipient(ctx, state, chains);
     return;
   }
 
-  let quote: QuoteResponse;
+  // --- Saved address selected ---
+  if (data.startsWith('saved_addr:') && state.step === 'recipient') {
+    state.recipient = data.split(':').slice(1).join(':'); // address might contain colons
+    await handleRecipientSet(ctx, state, chains);
+    return;
+  }
+
+  // --- Confirm ---
+  if (data === 'confirm:yes' && state.step === 'confirm') {
+    state.step = 'done';
+    await executeTransfer(ctx, state, chains);
+    ctx.session.transferState = undefined;
+    return;
+  }
+
+  if (data === 'confirm:no' && state.step === 'confirm') {
+    ctx.session.transferState = undefined;
+    await ctx.reply('Transfer cancelled.');
+    return;
+  }
+}
+
+// --- Handle text messages during transfer flow ---
+export async function handleTransferText(ctx: BotContext): Promise<boolean> {
+  const state = ctx.session.transferState;
+  if (!state) return false;
+
+  const text = ctx.message?.text?.trim();
+  if (!text) return false;
+
+  if (text === '/cancel') {
+    ctx.session.transferState = undefined;
+    await ctx.reply('Transfer cancelled.');
+    return true;
+  }
+
+  const chains = state.chains ?? await getChains();
+  const sdk = getSDK();
+
+  // --- Amount input ---
+  if (state.step === 'amount') {
+    const parsed = parseFloat(text);
+    if (isNaN(parsed) || parsed <= 0) {
+      await ctx.reply('Please enter a valid positive number.');
+      return true;
+    }
+    state.amount = text;
+    state.step = 'recipient';
+    await promptRecipient(ctx, state, chains);
+    return true;
+  }
+
+  // --- Recipient address ---
+  if (state.step === 'recipient') {
+    const valid = sdk.validateAddress(state.dstChain!, text);
+    if (!valid) {
+      const destConfig = chains.find((c) => c.id === state.dstChain)!;
+      await ctx.reply(`Invalid ${destConfig.name} address. Please try again.`);
+      return true;
+    }
+    state.recipient = text;
+    await handleRecipientSet(ctx, state, chains);
+    return true;
+  }
+
+  // --- Refund address ---
+  if (state.step === 'refund') {
+    const valid = sdk.validateAddress(state.srcChain!, text);
+    if (!valid) {
+      const srcConfig = chains.find((c) => c.id === state.srcChain)!;
+      await ctx.reply(`Invalid ${srcConfig.name} address. Please try again.`);
+      return true;
+    }
+    state.refundAddress = text;
+    state.step = 'confirm';
+    await showConfirmation(ctx, state, chains);
+    return true;
+  }
+
+  return false;
+}
+
+// --- Show confirmation ---
+async function showConfirmation(ctx: BotContext, state: TransferState, chains: ChainConfig[]): Promise<void> {
+  const sdk = getSDK();
+  const quoteLimit = checkQuoteLimit(ctx.from!.id);
+  if (!quoteLimit.allowed) {
+    await ctx.reply(`⏳ Slow down! Try again in ${formatRetryAfter(quoteLimit.retryAfterMs)}.`);
+    return;
+  }
+
   try {
-    quote = await conversation.external(() =>
-      sdk.getQuote({
-        from: { chain: sourceChain, token: sourceToken },
-        to: { chain: destChain, token: destToken },
-        amount,
-        recipient,
-        refundAddress,
-      }),
+    const quote = await sdk.getQuote({
+      from: { chain: state.srcChain!, token: state.srcToken! },
+      to: { chain: state.dstChain!, token: state.dstToken! },
+      amount: state.amount!,
+      recipient: state.recipient!,
+      refundAddress: state.refundAddress!,
+    });
+
+    const srcConfig = chains.find((c) => c.id === state.srcChain)!;
+    const dstConfig = chains.find((c) => c.id === state.dstChain)!;
+
+    const summary = formatTransferSummary(
+      state.amount!, state.srcToken!, state.dstToken!,
+      srcConfig.name, dstConfig.name,
+      state.recipient!, state.refundAddress!,
+      quote,
     );
+
+    await ctx.reply(`${summary}\n\nConfirm this transfer?`, {
+      reply_markup: confirmKeyboard(),
+    });
   } catch (err) {
     console.error('Quote failed:', err);
     await ctx.reply('Something went wrong getting a quote. Please try again.');
-    return;
+    ctx.session.transferState = undefined;
   }
+}
 
-  const summary = formatTransferSummary(
-    amount,
-    sourceToken,
-    destToken,
-    sourceChainConfig.name,
-    destChainConfig.name,
-    recipient,
-    refundAddress,
-    quote,
-  );
+// --- Execute transfer ---
+async function executeTransfer(ctx: BotContext, state: TransferState, chains: ChainConfig[]): Promise<void> {
+  const sdk = getSDK();
+  const from = ctx.from!;
 
-  await ctx.reply(`${summary}\n\nConfirm this transfer?`, {
-    reply_markup: confirmKeyboard(),
-  });
-
-  // Wait for confirm/cancel
-  while (true) {
-    const resp = await conversation.wait({ maxMilliseconds: 300_000 });
-
-    if (resp.callbackQuery?.data) {
-      try { await resp.answerCallbackQuery(); } catch { /* ignore stale */ }
-
-      if (resp.callbackQuery.data === 'confirm:no') {
-        await ctx.reply('Transfer cancelled.');
-        return;
-      }
-
-      if (resp.callbackQuery.data === 'confirm:yes') {
-        break;
-      }
-    }
-
-    if (resp.message?.text === '/cancel') {
-      await ctx.reply('Transfer cancelled.');
-      return;
-    }
-  }
-
-  // Step 9: Create transfer
   try {
-    const transfer = await conversation.external(() =>
-      sdk.createTransfer({
-        from: { chain: sourceChain, token: sourceToken },
-        to: { chain: destChain, token: destToken },
-        amount,
-        recipient,
-        refundAddress,
-      }),
-    );
+    const transfer = await sdk.createTransfer({
+      from: { chain: state.srcChain!, token: state.srcToken! },
+      to: { chain: state.dstChain!, token: state.dstToken! },
+      amount: state.amount!,
+      recipient: state.recipient!,
+      refundAddress: state.refundAddress!,
+    });
+
+    const srcConfig = chains.find((c) => c.id === state.srcChain)!;
 
     const depositMsg = formatDepositMessage(
       transfer.depositAddress,
       transfer.depositAmount,
-      sourceToken,
-      sourceChainConfig.name,
+      state.srcToken!,
+      srcConfig.name,
       transfer.expiresAt,
     );
 
@@ -413,41 +397,82 @@ export async function transferConversation(
       reply_markup: transferStatusKeyboard(),
     });
 
-    // Save to database
+    // Save to DB
     try {
-      const user = await conversation.external(() =>
-        createOrUpdateUser(from.id, from.username, from.first_name),
-      );
-
-      await conversation.external(() =>
-        createTransfer({
-          user_id: user.id,
-          telegram_id: from.id,
-          chat_id: ctx.chat?.id ?? from.id,
-          message_id: sentMsg.message_id,
-          source_chain: sourceChain,
-          source_token: sourceToken,
-          dest_chain: destChain,
-          dest_token: destToken,
-          amount,
-          recipient,
-          refund_address: refundAddress,
-          deposit_address: transfer.depositAddress,
-          deposit_amount: transfer.depositAmount,
-          status: 'PENDING',
-          expires_at: transfer.expiresAt,
-          transfer_id: transfer.id,
-        }),
-      );
+      const user = await createOrUpdateUser(from.id, from.username, from.first_name);
+      await createTransfer({
+        user_id: user.id,
+        chat_id: ctx.chat?.id ?? from.id,
+        message_id: sentMsg.message_id,
+        source_chain: state.srcChain!,
+        source_token: state.srcToken!,
+        dest_chain: state.dstChain!,
+        dest_token: state.dstToken!,
+        amount: state.amount!,
+        recipient: state.recipient!,
+        deposit_address: transfer.depositAddress,
+        status: 'PENDING',
+      });
     } catch (err) {
       console.error('Failed to save transfer to DB:', err);
     }
 
     console.log(
-      `Transfer created: ${transfer.id} by user ${from.id} — ${amount} ${sourceToken} (${sourceChain}) → ${destToken} (${destChain})`,
+      `Transfer created: ${transfer.id} by user ${from.id} — ${state.amount} ${state.srcToken} (${state.srcChain}) → ${state.dstToken} (${state.dstChain})`,
     );
   } catch (err) {
     console.error('Transfer creation failed:', err);
     await ctx.reply('Something went wrong creating the transfer. Please try again.');
+  }
+}
+
+// --- Prompt for recipient address (with saved addresses) ---
+async function promptRecipient(ctx: BotContext, state: TransferState, chains: ChainConfig[]): Promise<void> {
+  const destConfig = chains.find((c) => c.id === state.dstChain)!;
+  const from = ctx.from ?? ctx.callbackQuery?.from;
+  if (!from) {
+    await ctx.reply(`📬 Enter the recipient address on ${destConfig.name}:`);
+    return;
+  }
+
+  // Look up saved addresses for the destination chain
+  try {
+    const user = await getUser(from.id);
+    if (user) {
+      const addresses = await getAddresses(user.id);
+      const chainAddresses = addresses.filter((a) => a.chain === state.dstChain);
+
+      if (chainAddresses.length > 0) {
+        const kb = new InlineKeyboard();
+        for (const addr of chainAddresses) {
+          const short = addr.address.length > 20
+            ? `${addr.address.slice(0, 6)}...${addr.address.slice(-4)}`
+            : addr.address;
+          kb.text(`📒 ${addr.label} (${short})`, `saved_addr:${addr.address}`).row();
+        }
+        kb.text('✖ Cancel', 'action:cancel');
+
+        await ctx.reply(
+          `📬 Enter the recipient address on ${destConfig.name}, or pick a saved address:`,
+          { reply_markup: kb },
+        );
+        return;
+      }
+    }
+  } catch { /* ignore, fall through to plain prompt */ }
+
+  await ctx.reply(`📬 Enter the recipient address on ${destConfig.name}:`);
+}
+
+// --- Handle recipient being set (advance to refund or confirm) ---
+async function handleRecipientSet(ctx: BotContext, state: TransferState, chains: ChainConfig[]): Promise<void> {
+  if (state.srcChain === state.dstChain) {
+    state.refundAddress = state.recipient;
+    state.step = 'confirm';
+    await showConfirmation(ctx, state, chains);
+  } else {
+    state.step = 'refund';
+    const srcConfig = chains.find((c) => c.id === state.srcChain)!;
+    await ctx.reply(`🔙 Enter refund address on ${srcConfig.name} (in case of failure):`);
   }
 }

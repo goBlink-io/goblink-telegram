@@ -1,46 +1,49 @@
-import type { Context } from 'grammy';
-import type { ConversationFlavor } from '@grammyjs/conversations';
-import type { ChainId, TransferStatusValue } from '@urban-blazer/goblink-sdk';
+import type { Context, SessionFlavor } from 'grammy';
+import type { ChainId, ChainConfig, Token } from '@urban-blazer/goblink-sdk';
 
 export interface SessionData {
   transferState?: TransferState;
 }
 
+export type TransferStep =
+  | 'src_chain'
+  | 'src_token'
+  | 'dst_chain'
+  | 'dst_token'
+  | 'amount'
+  | 'recipient'
+  | 'refund'
+  | 'confirm'
+  | 'done';
+
 export interface TransferState {
   step: TransferStep;
-  sourceChain?: ChainId;
-  sourceToken?: string;
-  destChain?: ChainId;
-  destToken?: string;
+  srcChain?: ChainId;
+  srcToken?: string;
+  dstChain?: ChainId;
+  dstToken?: string;
   amount?: string;
   recipient?: string;
   refundAddress?: string;
+  page: number;
+  chains?: ChainConfig[];
+  tokens?: Token[];
+  lastMessageId?: number;
 }
 
-export type TransferStep =
-  | 'source_chain'
-  | 'source_token'
-  | 'dest_chain'
-  | 'dest_token'
-  | 'amount'
-  | 'recipient'
-  | 'refund_address'
-  | 'confirm';
-
-export type BotContext = ConversationFlavor<Context>;
+export type BotContext = Context & SessionFlavor<SessionData>;
 
 export interface TgUser {
   id: string;
   telegram_id: number;
-  username?: string;
+  telegram_username?: string;
   first_name?: string;
   created_at: string;
-  updated_at: string;
+  last_active_at: string;
 }
 
 export interface CreateTransferInput {
   user_id: string;
-  telegram_id: number;
   chat_id: number;
   message_id?: number;
   source_chain: string;
@@ -49,18 +52,13 @@ export interface CreateTransferInput {
   dest_token: string;
   amount: string;
   recipient: string;
-  refund_address: string;
   deposit_address: string;
-  deposit_amount: string;
-  status: TransferStatusValue;
-  expires_at: string;
-  transfer_id: string;
+  status: string;
 }
 
 export interface TgTransfer {
   id: string;
   user_id: string;
-  telegram_id: number;
   chat_id: number;
   message_id?: number;
   source_chain: string;
@@ -69,14 +67,10 @@ export interface TgTransfer {
   dest_token: string;
   amount: string;
   recipient: string;
-  refund_address: string;
   deposit_address: string;
-  deposit_amount: string;
-  status: TransferStatusValue;
+  status: string;
   tx_hash?: string;
   explorer_url?: string;
-  transfer_id: string;
-  expires_at: string;
   created_at: string;
   updated_at: string;
 }

@@ -53,7 +53,7 @@ async function pollStatuses(bot: Bot<BotContext>): Promise<void> {
       );
 
       console.log(
-        `Transfer ${transfer.transfer_id} status: ${transfer.status} → ${status.status}`,
+        `Transfer ${transfer.id} status: ${transfer.status} → ${status.status}`,
       );
 
       // Notify user
@@ -108,7 +108,7 @@ async function pollStatuses(bot: Bot<BotContext>): Promise<void> {
       }
     } catch (err) {
       console.error(
-        `Failed to poll status for transfer ${transfer.transfer_id}:`,
+        `Failed to poll status for transfer ${transfer.id}:`,
         err,
       );
     }
