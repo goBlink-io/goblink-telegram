@@ -4,7 +4,7 @@ import { config } from './config.js';
 import { startCommand } from './commands/start.js';
 import { historyCommand } from './commands/history.js';
 import { priceCommand, handlePriceCallback } from './commands/price.js';
-import { helpCommand } from './commands/help.js';
+import { helpCommand, handleHelpCallback } from './commands/help.js';
 import { addressBookCommand, saveAddressCommand, handleAddressDeleteCallback } from './commands/addressbook.js';
 import { startTransferFlow, handleTransferCallback, handleTransferText } from './conversations/transfer.js';
 import { defaultCommand } from './commands/default.js';
@@ -98,6 +98,12 @@ export function createBot(): Bot<BotContext> {
     if (data.startsWith('addr_del:')) {
       const id = data.split(':')[1]!;
       await handleAddressDeleteCallback(ctx, id);
+      return;
+    }
+
+    // Help section callbacks
+    if (data.startsWith('help:')) {
+      await handleHelpCallback(ctx, data);
       return;
     }
 
