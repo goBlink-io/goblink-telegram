@@ -22,6 +22,7 @@ import {
   checkQuoteLimit,
   formatRetryAfter,
 } from '../utils/rate-limiter.js';
+import { isActiveChain, filterTokensBySymbol } from '../utils/filters.js';
 import { createOrUpdateUser, createTransfer } from '../services/supabase.js';
 
 type TransferConversation = Conversation<BotContext, Context>;
@@ -38,7 +39,7 @@ async function waitForChainSelection(
   const sorted = sortChains(chains);
   let page = 0;
 
-  await ctx.reply(prompt, {
+  let lastMsg = await ctx.reply(prompt, {
     reply_markup: chainSelectKeyboard(sorted, page, prefix),
   });
 
@@ -49,20 +50,23 @@ async function waitForChainSelection(
 
     if (resp.callbackQuery?.data) {
       const data = resp.callbackQuery.data;
-      await resp.answerCallbackQuery();
+      try { await resp.answerCallbackQuery(); } catch { /* ignore stale */ }
 
       if (data === 'action:cancel') return null;
 
       if (data.startsWith(`page:${prefix}:`)) {
-        page = parseInt(data.split(':')[2]!, 10);
-        await resp.editMessageReplyMarkup({
+        const parts = data.split(':');
+        page = parseInt(parts[parts.length - 1]!, 10);
+        try { await ctx.api.deleteMessage(lastMsg.chat.id, lastMsg.message_id); } catch { /* ignore */ }
+        lastMsg = await ctx.reply(prompt, {
           reply_markup: chainSelectKeyboard(sorted, page, prefix),
         });
         continue;
       }
 
       if (data.startsWith(`${prefix}:`)) {
-        return data.split(':')[1] as ChainId;
+        const parts = data.split(':');
+        return parts[parts.length - 1] as ChainId;
       }
     }
 
@@ -81,11 +85,12 @@ async function waitForTokenSelection(
   prompt: string,
 ): Promise<string | null> {
   const sdk = getSDK();
-  const tokens = await conversation.external(() => sdk.getTokens({ chain }));
+  const allTokens = await conversation.external(() => sdk.getTokens({ chain }));
+  const tokens = filterTokensBySymbol(allTokens);
   const sorted = sortTokens(tokens, nativeSymbol);
   let page = 0;
 
-  await ctx.reply(prompt, {
+  let lastMsg = await ctx.reply(prompt, {
     reply_markup: tokenSelectKeyboard(sorted, page, prefix),
   });
 
@@ -96,20 +101,23 @@ async function waitForTokenSelection(
 
     if (resp.callbackQuery?.data) {
       const data = resp.callbackQuery.data;
-      await resp.answerCallbackQuery();
+      try { await resp.answerCallbackQuery(); } catch { /* ignore stale */ }
 
       if (data === 'action:cancel') return null;
 
       if (data.startsWith(`page:${prefix}:`)) {
-        page = parseInt(data.split(':')[2]!, 10);
-        await resp.editMessageReplyMarkup({
+        const parts = data.split(':');
+        page = parseInt(parts[parts.length - 1]!, 10);
+        try { await ctx.api.deleteMessage(lastMsg.chat.id, lastMsg.message_id); } catch { /* ignore */ }
+        lastMsg = await ctx.reply(prompt, {
           reply_markup: tokenSelectKeyboard(sorted, page, prefix),
         });
         continue;
       }
 
       if (data.startsWith(`${prefix}:`)) {
-        return data.split(':')[1]!;
+        const parts = data.split(':');
+        return parts[parts.length - 1]!;
       }
     }
 
@@ -141,7 +149,8 @@ export async function transferConversation(
   }
 
   const sdk = getSDK();
-  const chains = await conversation.external(() => sdk.getChains());
+  const allChains = await conversation.external(() => sdk.getChains());
+  const chains = allChains.filter((c) => isActiveChain(c.id));
 
   // Step 1: Source chain
   const sourceChain = await waitForChainSelection(
@@ -216,7 +225,7 @@ export async function transferConversation(
 
     if (resp.callbackQuery?.data) {
       const data = resp.callbackQuery.data;
-      await resp.answerCallbackQuery();
+      try { await resp.answerCallbackQuery(); } catch { /* ignore stale */ }
 
       if (data === 'action:cancel') {
         await ctx.reply('Transfer cancelled.');
@@ -361,7 +370,7 @@ export async function transferConversation(
     const resp = await conversation.wait({ maxMilliseconds: 300_000 });
 
     if (resp.callbackQuery?.data) {
-      await resp.answerCallbackQuery();
+      try { await resp.answerCallbackQuery(); } catch { /* ignore stale */ }
 
       if (resp.callbackQuery.data === 'confirm:no') {
         await ctx.reply('Transfer cancelled.');

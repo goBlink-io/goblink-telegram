@@ -29,9 +29,9 @@ export async function createOrUpdateUser(
     .upsert(
       {
         telegram_id: telegramId,
-        username,
+        telegram_username: username,
         first_name: firstName,
-        updated_at: new Date().toISOString(),
+        last_active_at: new Date().toISOString(),
       },
       { onConflict: 'telegram_id' },
     )
@@ -104,14 +104,14 @@ export async function getActiveTransfers(): Promise<TgTransfer[]> {
 }
 
 export async function getUserTransfers(
-  telegramId: number,
+  userId: string,
   limit = 10,
 ): Promise<TgTransfer[]> {
   const db = getSupabase();
   const { data, error } = await db
     .from('tg_transfers')
     .select()
-    .eq('telegram_id', telegramId)
+    .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .limit(limit);
 

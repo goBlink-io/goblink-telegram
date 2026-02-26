@@ -7,7 +7,7 @@ export async function menuCallback(ctx: BotContext): Promise<void> {
   const data = ctx.callbackQuery?.data;
   if (!data) return;
 
-  await ctx.answerCallbackQuery();
+  try { await ctx.answerCallbackQuery(); } catch { /* stale callback, ignore */ }
 
   switch (data) {
     case 'action:transfer':

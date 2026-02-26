@@ -1,5 +1,5 @@
 import type { BotContext } from '../types/index.js';
-import { getUserTransfers } from '../services/supabase.js';
+import { getUser, getUserTransfers } from '../services/supabase.js';
 import { formatHistoryEntry } from '../utils/formatters.js';
 import { mainMenuKeyboard } from '../utils/keyboards.js';
 
@@ -8,7 +8,14 @@ export async function historyCommand(ctx: BotContext): Promise<void> {
   if (!from) return;
 
   try {
-    const transfers = await getUserTransfers(from.id);
+    const user = await getUser(from.id);
+    if (!user) {
+      await ctx.reply('📋 No transfers yet. Start your first one!', {
+        reply_markup: mainMenuKeyboard(),
+      });
+      return;
+    }
+    const transfers = await getUserTransfers(user.id);
 
     if (transfers.length === 0) {
       await ctx.reply('📋 No transfers yet. Start your first one!', {
