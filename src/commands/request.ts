@@ -33,6 +33,6 @@ export async function requestCommand(ctx: BotContext): Promise<void> {
     ctx.session.requestState.lastMessageId = msg.message_id;
   } catch (err) {
     console.error('Request command failed:', err);
-    await ctx.reply('Something went wrong. Try again.');
+    await ctx.reply('❌ Something went wrong. Please try again or use /start to go back.');
   }
 }

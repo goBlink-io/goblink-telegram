@@ -59,7 +59,7 @@ async function showPriceOverview(ctx: BotContext): Promise<void> {
     });
   } catch (err) {
     console.error('Price overview failed:', err);
-    await ctx.reply('Something went wrong fetching prices. Try again.');
+    await ctx.reply('❌ Couldn\'t fetch prices right now. Try again in a moment.');
   }
 }
 
@@ -111,7 +111,7 @@ async function showTokenPrice(ctx: BotContext, symbol: string, edit = false): Pr
     }
   } catch (err) {
     console.error('Price lookup failed:', err);
-    await ctx.reply('Something went wrong. Try again.');
+    await ctx.reply('❌ Couldn\'t look up that token. Check the symbol and try again.');
   }
 }
 

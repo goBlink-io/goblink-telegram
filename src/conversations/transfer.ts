@@ -27,7 +27,7 @@ import {
   formatRetryAfter,
 } from '../utils/rate-limiter.js';
 import { isActiveChain, filterTokensBySymbol } from '../utils/filters.js';
-import { createOrUpdateUser, createTransfer, getUser, getAddresses } from '../services/supabase.js';
+import { createOrUpdateUser, createTransfer, getUser, getAddresses, getUserDefaults } from '../services/supabase.js';
 
 export type TransferStep =
   | 'src_chain'
@@ -81,6 +81,25 @@ function stepHeader(step: TransferStep): string {
 /** Fire typing indicator — best-effort, non-blocking */
 function sendTyping(ctx: BotContext): void {
   ctx.replyWithChatAction('typing').catch(() => {});
+}
+
+/** Address format hints for validation errors (Fix #6) */
+function addressHint(chain: ChainId): string {
+  const hints: Record<string, string> = {
+    ethereum: 'Expected: 0x... (42 characters)',
+    arbitrum: 'Expected: 0x... (42 characters)',
+    base:     'Expected: 0x... (42 characters)',
+    optimism: 'Expected: 0x... (42 characters)',
+    polygon:  'Expected: 0x... (42 characters)',
+    bsc:      'Expected: 0x... (42 characters)',
+    near:     'Expected: name.near or 64-char hex',
+    solana:   'Expected: base58 (32-44 characters)',
+    sui:      'Expected: 0x... (66 characters)',
+    aptos:    'Expected: 0x... (66 characters)',
+    tron:     'Expected: T... (34 characters)',
+    starknet: 'Expected: 0x... (66 characters)',
+  };
+  return hints[chain] ?? 'Check the address format and try again.';
 }
 
 // --- Cached data ---
@@ -140,6 +159,32 @@ export async function startTransferFlow(ctx: BotContext): Promise<void> {
   sendTyping(ctx);
   const chains = await getChains();
   state.chains = chains;
+
+  // Fix #10: Check for user defaults — skip to destination if set
+  if (from) {
+    try {
+      const defaults = await getUserDefaults(from.id);
+      if (defaults?.srcChain && defaults?.srcToken) {
+        // Verify chain/token still valid
+        const chainValid = chains.some(c => c.id === defaults.srcChain);
+        if (chainValid) {
+          const tokens = await getTokensForChain(defaults.srcChain as ChainId);
+          const tokenValid = tokens.some(t => t.symbol === defaults.srcToken);
+          if (tokenValid) {
+            state.srcChain = defaults.srcChain as ChainId;
+            state.srcToken = defaults.srcToken;
+            state.step = 'dst_chain';
+            const destChains = chains.filter(c => c.id !== state.srcChain);
+            await sendStep(ctx, state,
+              `${stepHeader('dst_chain')}\n\n⚡ Sending ${displaySymbol(state.srcToken)} from ${chains.find(c => c.id === state.srcChain)?.name}\n\n🎯 Where should they go?`,
+              chainSelectKeyboard(sortChains(destChains), 0, 'dst_chain'),
+            );
+            return;
+          }
+        }
+      }
+    } catch { /* fall through to normal flow */ }
+  }
 
   await sendStep(ctx, state, `${stepHeader('src_chain')}\n\n🔗 Where are your tokens now?`, chainSelectKeyboard(sortChains(chains), 0, 'src_chain'));
 }
@@ -284,6 +329,21 @@ export async function handleTransferCallback(ctx: BotContext, data: string): Pro
     return;
   }
 
+  // --- Refund address from saved ---
+  if (data.startsWith('refund_addr:') && state.step === 'confirm') {
+    state.refundAddress = data.split(':').slice(1).join(':');
+    await showConfirmation(ctx, state, chains);
+    return;
+  }
+
+  // --- Custom refund address prompt ---
+  if (data === 'refund:custom') {
+    state.step = 'refund';
+    const srcConfig = chains.find((c) => c.id === state.srcChain)!;
+    await ctx.reply(`${stepHeader('refund')}\n\n🔙 Type your ${srcConfig.name} refund address:`);
+    return;
+  }
+
   // --- Retry quote ---
   if (data === 'confirm:retry' && state.step === 'confirm') {
     await showConfirmation(ctx, state, chains);
@@ -322,6 +382,59 @@ export async function handleTransferText(ctx: BotContext): Promise<boolean> {
   const chains = state.chains ?? await getChains();
   const sdk = getSDK();
 
+  // --- Fix #9: Token search by typing ---
+  if (state.step === 'src_token' || state.step === 'dst_token') {
+    const query = text.toUpperCase();
+    const chainId = state.step === 'src_token' ? state.srcChain! : state.dstChain!;
+
+    // Fetch tokens if not cached
+    if (!state.tokens) {
+      state.tokens = await getTokensForChain(chainId);
+    }
+
+    const matches = state.tokens.filter(t =>
+      t.symbol.toUpperCase().includes(query)
+    );
+
+    try { await ctx.deleteMessage(); } catch {}
+
+    if (matches.length === 0) {
+      await ctx.reply(`No tokens matching "${text}". Try again or pick from the list.`);
+      return true;
+    }
+
+    if (matches.length === 1) {
+      // Exact single match — auto-select
+      const token = matches[0]!;
+      if (state.step === 'src_token') {
+        state.srcToken = token.symbol;
+        state.step = 'dst_chain';
+        state.page = 0;
+        state.tokens = undefined;
+        const destChains = chains.filter(c => c.id !== state.srcChain);
+        await sendStep(ctx, state, `${stepHeader('dst_chain')}\n\n🎯 Where should they go?`, chainSelectKeyboard(sortChains(destChains), 0, 'dst_chain'));
+      } else {
+        state.dstToken = token.symbol;
+        state.step = 'amount';
+        state.tokens = undefined;
+        let price: number | undefined;
+        try {
+          const srcTokens = await getTokensForChain(state.srcChain!);
+          price = srcTokens.find(t => t.symbol === state.srcToken)?.price;
+        } catch {}
+        await sendStep(ctx, state, `${stepHeader('amount')}\n\n💵 How much ${displaySymbol(state.srcToken!)} to send?`, amountKeyboard(state.srcToken!, price));
+      }
+      return true;
+    }
+
+    // Multiple matches — show filtered list
+    const chainConfig = chains.find(c => c.id === chainId)!;
+    const prefix = state.step === 'src_token' ? 'src_token' : 'dst_token';
+    const sorted = sortTokens(matches, chainConfig.nativeToken);
+    await sendStep(ctx, state, `${stepHeader(state.step)}\n\n🔍 ${matches.length} tokens matching "${text}":`, tokenSelectKeyboard(sorted, 0, prefix));
+    return true;
+  }
+
   // --- Amount input ---
   if (state.step === 'amount') {
     const parsed = parseFloat(text);
@@ -340,7 +453,7 @@ export async function handleTransferText(ctx: BotContext): Promise<boolean> {
     const valid = sdk.validateAddress(state.dstChain!, text);
     if (!valid) {
       const destConfig = chains.find((c) => c.id === state.dstChain)!;
-      await ctx.reply(`Invalid ${destConfig.name} address. Please try again.`);
+      await ctx.reply(`❌ That doesn't look like a valid ${destConfig.name} address.\n\n${addressHint(state.dstChain!)}`);
       return true;
     }
     state.recipient = text;
@@ -353,7 +466,7 @@ export async function handleTransferText(ctx: BotContext): Promise<boolean> {
     const valid = sdk.validateAddress(state.srcChain!, text);
     if (!valid) {
       const srcConfig = chains.find((c) => c.id === state.srcChain)!;
-      await ctx.reply(`Invalid ${srcConfig.name} address. Please try again.`);
+      await ctx.reply(`❌ That doesn't look like a valid ${srcConfig.name} address.\n\n${addressHint(state.srcChain!)}`);
       return true;
     }
     state.refundAddress = text;
@@ -468,7 +581,16 @@ async function executeTransfer(ctx: BotContext, state: TransferState, chains: Ch
     );
   } catch (err) {
     console.error('Transfer creation failed:', err);
-    await ctx.reply('Something went wrong creating the transfer. Please try again.', { reply_markup: mainMenuKeyboard() });
+    const errMsg = (err as any)?.message || '';
+    let userMsg = '❌ Transfer creation failed.';
+    if (errMsg.includes('timeout') || errMsg.includes('ETIMEDOUT')) {
+      userMsg = '❌ The server timed out. Try again in a moment.';
+    } else if (errMsg.includes('No route') || errMsg.includes('no_route')) {
+      userMsg = '❌ No route available for this transfer pair right now.';
+    } else if (errMsg.includes('amount') || errMsg.includes('minimum')) {
+      userMsg = '❌ Amount too small for this route. Try a larger amount.';
+    }
+    await ctx.reply(userMsg, { reply_markup: mainMenuKeyboard() });
   }
 }
 
@@ -513,13 +635,67 @@ async function promptRecipient(ctx: BotContext, state: TransferState, chains: Ch
 
 // --- Handle recipient being set (advance to refund or confirm) ---
 async function handleRecipientSet(ctx: BotContext, state: TransferState, chains: ChainConfig[]): Promise<void> {
+  // Same chain → refund = recipient
   if (state.srcChain === state.dstChain) {
     state.refundAddress = state.recipient;
     state.step = 'confirm';
     await showConfirmation(ctx, state, chains);
-  } else {
-    state.step = 'refund';
-    const srcConfig = chains.find((c) => c.id === state.srcChain)!;
-    await ctx.reply(`${stepHeader('refund')}\n\n🔙 Enter your ${srcConfig.name} address for refunds (if anything goes wrong):`);
+    return;
   }
+
+  const srcConfig = chains.find((c) => c.id === state.srcChain)!;
+  const from = ctx.from ?? ctx.callbackQuery?.from;
+
+  // Fix #7: Try auto-fill from saved addresses on source chain
+  if (from) {
+    try {
+      const user = await getUser(from.id);
+      if (user) {
+        const addresses = await getAddresses(user.id);
+        const srcAddresses = addresses.filter(a => a.chain === state.srcChain);
+
+        if (srcAddresses.length > 0) {
+          // Auto-fill with first saved address, offer change option
+          const best = srcAddresses[0]!;
+          state.refundAddress = best.address;
+          state.step = 'confirm';
+
+          const shortAddr = best.address.length > 20
+            ? `${best.address.slice(0, 8)}...${best.address.slice(-6)}`
+            : best.address;
+
+          // If multiple saved addresses, let them pick
+          if (srcAddresses.length > 1) {
+            const kb = new InlineKeyboard();
+            for (const addr of srcAddresses) {
+              const short = addr.address.length > 20
+                ? `${addr.address.slice(0, 6)}...${addr.address.slice(-4)}`
+                : addr.address;
+              kb.text(`📒 ${addr.label} (${short})`, `refund_addr:${addr.address}`).row();
+            }
+            kb.text('✏️ Type different address', 'refund:custom').row();
+            kb.text('✖ Cancel', 'action:cancel');
+
+            await ctx.reply(
+              `${stepHeader('refund')}\n\n🔙 Refund address on ${srcConfig.name} (if anything goes wrong):\n\nUsing *${best.label}* (\`${shortAddr}\`)\n\nChange it or confirm to continue:`,
+              { parse_mode: 'Markdown', reply_markup: kb },
+            );
+            return;
+          }
+
+          // Single saved address — auto-fill and go straight to confirm
+          await ctx.reply(
+            `🔙 Refund to: *${best.label}* (\`${shortAddr}\`) on ${srcConfig.name}`,
+            { parse_mode: 'Markdown' },
+          );
+          await showConfirmation(ctx, state, chains);
+          return;
+        }
+      }
+    } catch { /* fall through to manual prompt */ }
+  }
+
+  // No saved addresses — ask manually
+  state.step = 'refund';
+  await ctx.reply(`${stepHeader('refund')}\n\n🔙 Enter your ${srcConfig.name} address for refunds (if anything goes wrong):`);
 }

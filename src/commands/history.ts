@@ -41,6 +41,6 @@ export async function historyCommand(ctx: BotContext): Promise<void> {
     });
   } catch (err) {
     console.error('Failed to fetch history:', err);
-    await ctx.reply('Something went wrong. Please try again.');
+    await ctx.reply('❌ Couldn\'t load transfer history right now. Try again in a moment.');
   }
 }

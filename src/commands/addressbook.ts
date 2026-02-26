@@ -45,7 +45,7 @@ export async function addressBookCommand(ctx: BotContext): Promise<void> {
     });
   } catch (err) {
     console.error('Address book failed:', err);
-    await ctx.reply('Something went wrong. Try again.');
+    await ctx.reply('❌ Something went wrong. Please try again or use /start to go back.');
   }
 }
 
@@ -92,7 +92,7 @@ export async function saveAddressCommand(ctx: BotContext): Promise<void> {
       await ctx.reply('This address is already saved for this chain.');
     } else {
       console.error('Save address failed:', err);
-      await ctx.reply('Something went wrong. Try again.');
+      await ctx.reply('❌ Something went wrong. Please try again or use /start to go back.');
     }
   }
 }
@@ -108,6 +108,6 @@ export async function handleAddressDeleteCallback(ctx: BotContext, addressId: st
     await ctx.editMessageText('✅ Address deleted.\n\nUse /addressbook to see remaining addresses.');
   } catch (err) {
     console.error('Delete address failed:', err);
-    await ctx.reply('Failed to delete. Try again.');
+    await ctx.reply('❌ Couldn\'t delete that address. Try again or use /addressbook.');
   }
 }

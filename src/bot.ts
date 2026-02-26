@@ -7,6 +7,7 @@ import { priceCommand, handlePriceCallback } from './commands/price.js';
 import { helpCommand } from './commands/help.js';
 import { addressBookCommand, saveAddressCommand, handleAddressDeleteCallback } from './commands/addressbook.js';
 import { startTransferFlow, handleTransferCallback, handleTransferText } from './conversations/transfer.js';
+import { defaultCommand } from './commands/default.js';
 import { startRequestFlow, handleRequestCallback, handleRequestText } from './conversations/request.js';
 
 export function createBot(): Bot<BotContext> {
@@ -30,6 +31,7 @@ export function createBot(): Bot<BotContext> {
   bot.command('addressbook', addressBookCommand);
   bot.command('addresses', addressBookCommand);
   bot.command('save', saveAddressCommand);
+  bot.command('default', defaultCommand);
   bot.command('request', async (ctx) => { await startRequestFlow(ctx); });
   bot.command('cancel', async (ctx) => {
     ctx.session.transferState = undefined;
@@ -75,6 +77,8 @@ export function createBot(): Bot<BotContext> {
       data.startsWith('dst_token:') ||
       data.startsWith('amount:') ||
       data.startsWith('confirm:') ||
+      data.startsWith('refund_addr:') ||
+      data === 'refund:custom' ||
       data.startsWith('page:') ||
       data === 'action:back_to_chains' ||
       data === 'action:cancel'

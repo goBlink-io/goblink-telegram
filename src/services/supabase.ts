@@ -156,3 +156,30 @@ export async function deleteAddress(id: string): Promise<void> {
   const { error } = await db.from('tg_address_book').delete().eq('id', id);
   if (error) throw new Error(`Failed to delete address: ${error.message}`);
 }
+
+// --- User Settings ---
+
+export interface UserDefaults {
+  srcChain?: string;
+  srcToken?: string;
+}
+
+export async function getUserDefaults(telegramId: number): Promise<UserDefaults | null> {
+  const user = await getUser(telegramId);
+  if (!user) return null;
+  const settings = (user as any).settings;
+  if (!settings || typeof settings !== 'object') return null;
+  return settings.defaults ?? null;
+}
+
+export async function setUserDefaults(telegramId: number, defaults: UserDefaults): Promise<void> {
+  const db = getSupabase();
+  const user = await getUser(telegramId);
+  if (!user) return;
+
+  const settings = typeof (user as any).settings === 'object' ? { ...(user as any).settings } : {};
+  settings.defaults = defaults;
+
+  const { error } = await db.from('tg_users').update({ settings }).eq('id', user.id);
+  if (error) throw new Error(`Failed to update user settings: ${error.message}`);
+}
