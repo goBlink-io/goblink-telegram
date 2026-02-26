@@ -8,6 +8,7 @@ import { helpCommand, handleHelpCallback } from './commands/help.js';
 import { addressBookCommand, saveAddressCommand, handleAddressDeleteCallback } from './commands/addressbook.js';
 import { startTransferFlow, handleTransferCallback, handleTransferText } from './conversations/transfer.js';
 import { defaultCommand } from './commands/default.js';
+import { commandsCommand } from './commands/commands.js';
 import { repeatCommand, handleRepeatCallback } from './commands/repeat.js';
 import { startRequestFlow, handleRequestCallback, handleRequestText } from './conversations/request.js';
 import { handleInlineQuery } from './inline/handler.js';
@@ -46,6 +47,7 @@ export function createBot(): Bot<BotContext> {
   bot.command('save', saveAddressCommand);
   bot.command('default', defaultCommand);
   bot.command('repeat', repeatCommand);
+  bot.command('commands', commandsCommand);
   bot.command('request', async (ctx) => { await startRequestFlow(ctx); });
   bot.command('cancel', async (ctx) => {
     ctx.session.transferState = undefined;
