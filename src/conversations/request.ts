@@ -5,7 +5,7 @@ import { ACTIVE_CHAIN_IDS, HIDDEN_TOKEN_SYMBOLS } from '../utils/filters.js';
 import { chainSelectKeyboard, tokenSelectKeyboard, amountKeyboard, mainMenuKeyboard } from '../utils/keyboards.js';
 import { InlineKeyboard } from 'grammy';
 import { getAddresses, getUser } from '../services/supabase.js';
-import { displaySymbol } from '../utils/formatters.js';
+import { displaySymbol, htmlEsc } from '../utils/formatters.js';
 
 const sdk = new GoBlink();
 
@@ -84,7 +84,7 @@ async function editMessage(ctx: BotContext, text: string, keyboard?: InlineKeybo
   if (!msgId) return;
   try {
     await ctx.api.editMessageText(ctx.chat!.id, msgId, text, {
-      parse_mode: 'Markdown',
+      parse_mode: 'HTML',
       reply_markup: keyboard,
     });
   } catch {
@@ -143,7 +143,7 @@ export async function handleRequestCallback(ctx: BotContext, data: string): Prom
       const chainName = state.chains?.find(c => c.id === chainId)?.name ?? chainId;
       await editMessage(
         ctx,
-        `${reqStepHeader('token')}\n\n🔗 Chain: *${chainName}*\n\nWhich token do you want to receive?`,
+        `${reqStepHeader('token')}\n\n🔗 Chain: <b>${htmlEsc(chainName)}</b>\n\nWhich token do you want to receive?`,
         tokenSelectKeyboard(tokens, 0, 'req_token'),
       );
     } catch (err) {
@@ -165,7 +165,7 @@ export async function handleRequestCallback(ctx: BotContext, data: string): Prom
 
     await editMessage(
       ctx,
-      `${reqStepHeader('amount')}\n\n🔗 *${chainName}* · 💰 *${displaySymbol(symbol)}*\n\nHow much ${displaySymbol(symbol)} do you want to request?`,
+      `${reqStepHeader('amount')}\n\n🔗 <b>${htmlEsc(chainName)}</b> · 💰 <b>${htmlEsc(displaySymbol(symbol))}</b>\n\nHow much ${htmlEsc(displaySymbol(symbol))} do you want to request?`,
       amountKeyboard(symbol, price),
     );
     return;
@@ -178,7 +178,7 @@ export async function handleRequestCallback(ctx: BotContext, data: string): Prom
       const chainName = state.chains?.find(c => c.id === state.chain)?.name ?? state.chain;
       await editMessage(
         ctx,
-        `${reqStepHeader('amount')}\n\n🔗 *${chainName}* · 💰 *${displaySymbol(state.token!)}*\n\nType the amount of ${displaySymbol(state.token!)} to request:`,
+        `${reqStepHeader('amount')}\n\n🔗 <b>${htmlEsc(chainName)}</b> · 💰 <b>${htmlEsc(displaySymbol(state.token!))}</b>\n\nType the amount of ${htmlEsc(displaySymbol(state.token!))} to request:`,
         new InlineKeyboard().text('◂ Back', 'req_back_tokens').row().text('✖ Cancel', 'action:cancel'),
       );
       // step stays 'amount' so text handler picks it up
@@ -231,7 +231,7 @@ export async function handleRequestCallback(ctx: BotContext, data: string): Prom
     const chainName = state.chains?.find(c => c.id === state.chain)?.name ?? state.chain;
     await editMessage(
       ctx,
-      `${reqStepHeader('token')}\n\n🔗 *${chainName}*\n\nWhich token do you want to receive?`,
+      `${reqStepHeader('token')}\n\n🔗 <b>${htmlEsc(chainName)}</b>\n\nWhich token do you want to receive?`,
       tokenSelectKeyboard(state.tokens ?? [], 0, 'req_token'),
     );
     return;
@@ -255,7 +255,7 @@ export async function handleRequestCallback(ctx: BotContext, data: string): Prom
     const chainName = state.chains?.find(c => c.id === state.chain)?.name ?? state.chain;
     await editMessage(
       ctx,
-      `${reqStepHeader('token')}\n\n🔗 *${chainName}*\n\nWhich token do you want to receive?`,
+      `${reqStepHeader('token')}\n\n🔗 <b>${htmlEsc(chainName)}</b>\n\nWhich token do you want to receive?`,
       tokenSelectKeyboard(state.tokens ?? [], page, 'req_token'),
     );
     return;
@@ -343,7 +343,7 @@ async function handleAmountInput(ctx: BotContext, amount: string): Promise<void>
 
           await editMessage(
             ctx,
-            `${reqStepHeader('address')}\n\n🔗 *${chainName}* · 💰 *${state.amount} ${displaySymbol(state.token!)}*\n\nSelect a saved address or type your receiving address:`,
+            `${reqStepHeader('address')}\n\n🔗 <b>${htmlEsc(chainName)}</b> · 💰 <b>${htmlEsc(state.amount)} ${htmlEsc(displaySymbol(state.token!))}</b>\n\nSelect a saved address or type your receiving address:`,
             kb,
           );
           return;
@@ -357,7 +357,7 @@ async function handleAmountInput(ctx: BotContext, amount: string): Promise<void>
   const kb = new InlineKeyboard().text('◂ Back', 'req_back_tokens').row();
   await editMessage(
     ctx,
-    `${reqStepHeader('address')}\n\n🔗 *${chainName}* · 💰 *${state.amount} ${displaySymbol(state.token!)}*\n\nType your receiving address on ${chainName}:`,
+    `${reqStepHeader('address')}\n\n🔗 <b>${htmlEsc(chainName)}</b> · 💰 <b>${htmlEsc(state.amount)} ${htmlEsc(displaySymbol(state.token!))}</b>\n\nType your receiving address on ${htmlEsc(chainName)}:`,
     kb,
   );
 }
@@ -378,7 +378,7 @@ async function showMemoStep(ctx: BotContext): Promise<void> {
 
   await editMessage(
     ctx,
-    `${reqStepHeader('memo')}\n\n🔗 *${chainName}* · 💰 *${state.amount} ${displaySymbol(state.token!)}*\n📬 *${shortAddr}*\n\nAdd a memo/note? (e.g. "For dinner" or "Invoice #42")\n\nOr tap Skip:`,
+    `${reqStepHeader('memo')}\n\n🔗 <b>${htmlEsc(chainName)}</b> · 💰 <b>${htmlEsc(state.amount)} ${htmlEsc(displaySymbol(state.token!))}</b>\n📬 <b>${htmlEsc(shortAddr ?? '')}</b>\n\nAdd a memo/note? (e.g. "For dinner" or "Invoice #42")\n\nOr tap Skip:`,
     kb,
   );
 }
@@ -410,13 +410,13 @@ async function generateAndShowLink(ctx: BotContext): Promise<void> {
     : state.address;
 
   const lines = [
-    '✅ *Payment Request Created*\n',
-    `🔗 Chain: *${chainName}*`,
-    `💰 Amount: *${state.amount} ${displaySymbol(state.token!)}*`,
-    `📬 To: \`${shortAddr}\``,
+    '✅ <b>Payment Request Created</b>\n',
+    `🔗 Chain: <b>${htmlEsc(chainName)}</b>`,
+    `💰 Amount: <b>${htmlEsc(state.amount)} ${htmlEsc(displaySymbol(state.token!))}</b>`,
+    `📬 To: <code>${htmlEsc(shortAddr)}</code>`,
   ];
   if (state.memo) {
-    lines.push(`📝 Memo: _${state.memo}_`);
+    lines.push(`📝 Memo: <i>${htmlEsc(state.memo)}</i>`);
   }
   lines.push('');
   lines.push(`Share this link — anyone can pay from any chain:\n${url}`);

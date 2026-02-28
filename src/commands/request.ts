@@ -23,9 +23,9 @@ export async function requestCommand(ctx: BotContext): Promise<void> {
     };
 
     const msg = await ctx.reply(
-      '💸 *Request Payment*\n\nWhich chain should you receive on?',
+      '💸 <b>Request Payment</b>\n\nWhich chain should you receive on?',
       {
-        parse_mode: 'Markdown',
+        parse_mode: 'HTML',
         reply_markup: chainSelectKeyboard(chains, 0, 'req_chain'),
       },
     );

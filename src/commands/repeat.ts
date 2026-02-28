@@ -2,7 +2,7 @@ import type { BotContext, TransferState } from '../types/index.js';
 import { InlineKeyboard } from 'grammy';
 import { mainMenuKeyboard } from '../utils/keyboards.js';
 import { getUser, getUserTransfers } from '../services/supabase.js';
-import { displaySymbol, formatAmount, truncateAddr } from '../utils/formatters.js';
+import { displaySymbol, formatAmount, truncateAddr, htmlEsc } from '../utils/formatters.js';
 
 /**
  * /repeat — Pre-fill a new transfer with the same params as your last one.
@@ -30,11 +30,11 @@ export async function repeatCommand(ctx: BotContext): Promise<void> {
       const t = transfers[0]!;
       ctx.session.transferState = prefillState(t);
       await ctx.reply(
-        `🔁 *Repeat last transfer:*\n\n` +
-        `${formatAmount(t.amount)} ${displaySymbol(t.source_token)} (${t.source_chain}) → ${displaySymbol(t.dest_token)} (${t.dest_chain})\n` +
-        `To: \`${truncateAddr(t.recipient)}\`\n\n` +
+        `🔁 <b>Repeat last transfer:</b>\n\n` +
+        `${htmlEsc(formatAmount(t.amount))} ${htmlEsc(displaySymbol(t.source_token))} (${htmlEsc(t.source_chain)}) → ${htmlEsc(displaySymbol(t.dest_token))} (${htmlEsc(t.dest_chain)})\n` +
+        `To: <code>${htmlEsc(truncateAddr(t.recipient))}</code>\n\n` +
         `Fetching quote...`,
-        { parse_mode: 'Markdown' },
+        { parse_mode: 'HTML' },
       );
 
       // Jump straight to confirmation
@@ -53,8 +53,8 @@ export async function repeatCommand(ctx: BotContext): Promise<void> {
     }
     kb.text('✖ Cancel', 'action:cancel');
 
-    await ctx.reply('🔁 *Repeat which transfer?*\n\nPick one of your recent transfers:', {
-      parse_mode: 'Markdown',
+    await ctx.reply('🔁 <b>Repeat which transfer?</b>\n\nPick one of your recent transfers:', {
+      parse_mode: 'HTML',
       reply_markup: kb,
     });
 
@@ -85,11 +85,11 @@ export async function handleRepeatCallback(ctx: BotContext, data: string): Promi
   ctx.session.repeatTransfers = undefined;
 
   await ctx.reply(
-    `🔁 *Repeating:*\n` +
-    `${formatAmount(t.amount)} ${displaySymbol(t.source_token)} (${t.source_chain}) → ${displaySymbol(t.dest_token)} (${t.dest_chain})\n` +
-    `To: \`${truncateAddr(t.recipient)}\`\n\n` +
+    `🔁 <b>Repeating:</b>\n` +
+    `${htmlEsc(formatAmount(t.amount))} ${htmlEsc(displaySymbol(t.source_token))} (${htmlEsc(t.source_chain)}) → ${htmlEsc(displaySymbol(t.dest_token))} (${htmlEsc(t.dest_chain)})\n` +
+    `To: <code>${htmlEsc(truncateAddr(t.recipient))}</code>\n\n` +
     `Fetching quote...`,
-    { parse_mode: 'Markdown' },
+    { parse_mode: 'HTML' },
   );
 
   const { showConfirmation, getChainsCached } = await import('../conversations/transfer.js');

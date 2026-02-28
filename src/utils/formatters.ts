@@ -8,6 +8,15 @@ export function escMd2(text: string): string {
   return text.replace(MD2_SPECIAL, '\\$1');
 }
 
+// --- HTML escaping ---
+
+export function htmlEsc(text: string | number | undefined): string {
+  return String(text ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 // --- Symbol normalization (match goblink.io display) ---
 
 const SYMBOL_OVERRIDES: Record<string, string> = {
@@ -119,10 +128,10 @@ export function formatDepositMessage(
     `✅ Transfer created!`,
     ``,
     `Send exactly:`,
-    `\`${depositAmount} ${displaySymbol(sourceToken)}\``,
+    `<code>${htmlEsc(depositAmount)} ${htmlEsc(displaySymbol(sourceToken))}</code>`,
     ``,
-    `To this ${sourceChain} address:`,
-    `\`${depositAddress}\``,
+    `To this ${htmlEsc(sourceChain)} address:`,
+    `<code>${htmlEsc(depositAddress)}</code>`,
     ``,
     `⏰ Expires in ~${mins} minutes`,
     ``,

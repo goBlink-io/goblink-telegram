@@ -5,7 +5,7 @@ import {
   ensureReferralCode,
   getReferralStats,
 } from '../services/supabase.js';
-import { formatAmount } from '../utils/formatters.js';
+import { formatAmount, htmlEsc } from '../utils/formatters.js';
 
 /**
  * /referral — View your referral link and stats.
@@ -22,17 +22,17 @@ export async function referralCommand(ctx: BotContext): Promise<void> {
     const link = `https://t.me/goBlinkBot?start=ref_${code}`;
 
     const lines = [
-      `🔗 *Your Referral*`,
+      `🔗 <b>Your Referral</b>`,
       ``,
-      `📋 Code: \`${code}\``,
+      `📋 Code: <code>${htmlEsc(code)}</code>`,
       `🔗 Link: ${link}`,
       ``,
-      `📊 *Stats*`,
+      `📊 <b>Stats</b>`,
       `👥 Referred: ${stats.referralCount} user${stats.referralCount !== 1 ? 's' : ''}`,
     ];
 
     if (stats.referralVolume > 0) {
-      lines.push(`💰 Their volume: $${formatAmount(stats.referralVolume.toFixed(2))}`);
+      lines.push(`💰 Their volume: $${htmlEsc(formatAmount(stats.referralVolume.toFixed(2)))}`);
     }
 
     lines.push(
@@ -46,7 +46,7 @@ export async function referralCommand(ctx: BotContext): Promise<void> {
       .url('🌐 goblink.io', 'https://goblink.io');
 
     await ctx.reply(lines.join('\n'), {
-      parse_mode: 'Markdown',
+      parse_mode: 'HTML',
       reply_markup: kb,
     });
   } catch (err) {

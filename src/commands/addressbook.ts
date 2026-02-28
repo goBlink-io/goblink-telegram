@@ -2,6 +2,7 @@ import type { BotContext } from '../types/index.js';
 import { getAddresses, saveAddress, deleteAddress } from '../services/supabase.js';
 import { getUser, createOrUpdateUser } from '../services/supabase.js';
 import { InlineKeyboard } from 'grammy';
+import { htmlEsc } from '../utils/formatters.js';
 
 /**
  * /addressbook — list saved addresses
@@ -13,34 +14,34 @@ export async function addressBookCommand(ctx: BotContext): Promise<void> {
   try {
     const user = await getUser(from.id);
     if (!user) {
-      await ctx.reply('📒 No saved addresses yet.\n\nUse /save to add one:\n`/save <label> <chain> <address>`', { parse_mode: 'Markdown' });
+      await ctx.reply('📒 No saved addresses yet.\n\nUse /save to add one:\n<code>/save &lt;label&gt; &lt;chain&gt; &lt;address&gt;</code>', { parse_mode: 'HTML' });
       return;
     }
 
     const addresses = await getAddresses(user.id);
     if (addresses.length === 0) {
-      await ctx.reply('📒 No saved addresses yet.\n\nUse /save to add one:\n`/save <label> <chain> <address>`', { parse_mode: 'Markdown' });
+      await ctx.reply('📒 No saved addresses yet.\n\nUse /save to add one:\n<code>/save &lt;label&gt; &lt;chain&gt; &lt;address&gt;</code>', { parse_mode: 'HTML' });
       return;
     }
 
-    const lines = ['📒 *Address Book*\n'];
+    const lines = ['📒 <b>Address Book</b>\n'];
     const kb = new InlineKeyboard();
 
     for (const entry of addresses) {
       const shortAddr = entry.address.length > 20
         ? `${entry.address.slice(0, 8)}...${entry.address.slice(-6)}`
         : entry.address;
-      lines.push(`*${entry.label}* (${entry.chain})\n\`${entry.address}\``);
+      lines.push(`<b>${htmlEsc(entry.label)}</b> (${htmlEsc(entry.chain)})\n<code>${htmlEsc(entry.address)}</code>`);
       lines.push('');
       kb.text(`❌ ${entry.label} (${entry.chain})`, `addr_del:${entry.id}`).row();
     }
 
     kb.text('« Back to Menu', 'menu:main').row();
 
-    lines.push(`_${addresses.length} address${addresses.length === 1 ? '' : 'es'} saved_`);
+    lines.push(`<i>${addresses.length} address${addresses.length === 1 ? '' : 'es'} saved</i>`);
 
     await ctx.reply(lines.join('\n'), {
-      parse_mode: 'Markdown',
+      parse_mode: 'HTML',
       reply_markup: kb,
     });
   } catch (err) {
@@ -60,14 +61,14 @@ export async function saveAddressCommand(ctx: BotContext): Promise<void> {
 
   if (parts.length < 3) {
     await ctx.reply(
-      '📒 *Save Address*\n\n' +
-      'Usage: `/save <label> <chain> <address>`\n\n' +
+      '📒 <b>Save Address</b>\n\n' +
+      'Usage: <code>/save &lt;label&gt; &lt;chain&gt; &lt;address&gt;</code>\n\n' +
       'Examples:\n' +
-      '`/save MyWallet solana 7xKp...3mNw`\n' +
-      '`/save CEX ethereum 0xABC...123`\n' +
-      '`/save Urban near urbanblazr.near`\n\n' +
+      '<code>/save MyWallet solana 7xKp...3mNw</code>\n' +
+      '<code>/save CEX ethereum 0xABC...123</code>\n' +
+      '<code>/save Urban near urbanblazr.near</code>\n\n' +
       'Chains: ethereum, solana, sui, near, base, arbitrum, polygon, bnb, optimism, tron, aptos, starknet',
-      { parse_mode: 'Markdown' },
+      { parse_mode: 'HTML' },
     );
     return;
   }
@@ -86,7 +87,7 @@ export async function saveAddressCommand(ctx: BotContext): Promise<void> {
   try {
     const user = await createOrUpdateUser(from.id, from.username, from.first_name);
     await saveAddress(user.id, label, chain, address);
-    await ctx.reply(`✅ Saved *${label}* (${chain})\n\`${address}\``, { parse_mode: 'Markdown' });
+    await ctx.reply(`✅ Saved <b>${htmlEsc(label)}</b> (${htmlEsc(chain)})\n<code>${htmlEsc(address)}</code>`, { parse_mode: 'HTML' });
   } catch (err: any) {
     if (err?.message?.includes('duplicate') || err?.message?.includes('unique')) {
       await ctx.reply('This address is already saved for this chain.');

@@ -21,7 +21,7 @@ export async function commandsCommand(ctx: BotContext): Promise<void> {
       .url('📩 More in DM', 'https://t.me/goBlinkBot');
 
     await ctx.reply(
-      `⚡ *goBlink — Group Commands*\n\n` +
+      `⚡ <b>goBlink — Group Commands</b>\n\n` +
       `/transfer@goBlinkBot — Cross-chain transfer\n` +
       `/request@goBlinkBot — Payment request link\n` +
       `/price@goBlinkBot — All token prices\n` +
@@ -29,30 +29,30 @@ export async function commandsCommand(ctx: BotContext): Promise<void> {
       `/referral@goBlinkBot — Your referral link\n` +
       `/help@goBlinkBot — Full help center\n` +
       `/commands@goBlinkBot — This list\n\n` +
-      `📩 *DM-only:* /history, /addressbook, /save, /default, /repeat\n\n` +
-      `💡 *Inline:* Type \`@goBlinkBot 100 USDC from ethereum to solana\` anywhere`,
-      { parse_mode: 'Markdown', reply_markup: kb },
+      `📩 <b>DM-only:</b> /history, /addressbook, /save, /default, /repeat\n\n` +
+      `💡 <b>Inline:</b> Type <code>@goBlinkBot 100 USDC from ethereum to solana</code> anywhere`,
+      { parse_mode: 'HTML', reply_markup: kb },
     );
   } else {
     await ctx.reply(
-      `⚡ *goBlink — All Commands*\n\n` +
-      `*Transfers*\n` +
+      `⚡ <b>goBlink — All Commands</b>\n\n` +
+      `<b>Transfers</b>\n` +
       `/transfer — Cross-chain token transfer\n` +
       `/request — Create a payment request link\n` +
       `/repeat — Repeat your last transfer\n\n` +
-      `*Info*\n` +
+      `<b>Info</b>\n` +
       `/price — Token prices\n` +
       `/history — Transfer history\n\n` +
-      `*Address Book*\n` +
+      `<b>Address Book</b>\n` +
       `/addressbook — View saved addresses\n` +
-      `/save <label> <chain> <address>\n\n` +
-      `*Settings & Referrals*\n` +
-      `/default <chain> <token> — Set default source\n` +
-      `/referral — Your referral link & stats\n\n` +
+      `/save &lt;label&gt; &lt;chain&gt; &lt;address&gt;\n\n` +
+      `<b>Settings &amp; Referrals</b>\n` +
+      `/default &lt;chain&gt; &lt;token&gt; — Set default source\n` +
+      `/referral — Your referral link &amp; stats\n\n` +
       `/help — Full help center\n` +
       `/commands — This list\n\n` +
-      `💡 *Inline:* Type \`@goBlinkBot 100 USDC to solana\` in any chat`,
-      { parse_mode: 'Markdown' },
+      `💡 <b>Inline:</b> Type <code>@goBlinkBot 100 USDC to solana</code> in any chat`,
+      { parse_mode: 'HTML' },
     );
   }
 }

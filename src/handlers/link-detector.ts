@@ -22,10 +22,10 @@ export async function detectGoBlinkLinks(ctx: BotContext): Promise<boolean> {
       .url('📱 Open in Bot', `https://t.me/goBlinkBot?start=link_${id}`);
 
     await ctx.reply(
-      `⚡ *goBlink Transfer Link*\n\n` +
+      `⚡ <b>goBlink Transfer Link</b>\n\n` +
       `Someone shared a transfer. Tap below to view details and complete it.\n\n` +
       `Non-custodial — you send from your own wallet.`,
-      { parse_mode: 'Markdown', reply_markup: kb },
+      { parse_mode: 'HTML', reply_markup: kb },
     );
     return true;
   }
@@ -41,10 +41,10 @@ export async function detectGoBlinkLinks(ctx: BotContext): Promise<boolean> {
       .url('📱 Open in Bot', `https://t.me/goBlinkBot?start=pay_${id}`);
 
     await ctx.reply(
-      `💸 *goBlink Payment Request*\n\n` +
+      `💸 <b>goBlink Payment Request</b>\n\n` +
       `Someone is requesting a payment. Tap below to pay from any chain.\n\n` +
       `Non-custodial — you send from your own wallet.`,
-      { parse_mode: 'Markdown', reply_markup: kb },
+      { parse_mode: 'HTML', reply_markup: kb },
     );
     return true;
   }

@@ -1,6 +1,6 @@
 import type { BotContext } from '../types/index.js';
 import { getSDK } from '../services/goblink.js';
-import { displaySymbol, formatAmount } from '../utils/formatters.js';
+import { displaySymbol, formatAmount, htmlEsc } from '../utils/formatters.js';
 import type { ChainConfig } from '@urban-blazer/goblink-sdk';
 
 const ACTIVE_CHAINS = new Set([
@@ -65,10 +65,10 @@ export async function handleInlineQuery(ctx: BotContext): Promise<void> {
           message_text:
             '⚡ Use @goBlinkBot to send tokens across chains.\n\n' +
             'Formats:\n' +
-            '`100 USDC from ethereum to solana`\n' +
-            '`100 USDC to solana`\n' +
-            '`100 USDC`',
-          parse_mode: 'Markdown',
+            '<code>100 USDC from ethereum to solana</code>\n' +
+            '<code>100 USDC to solana</code>\n' +
+            '<code>100 USDC</code>',
+          parse_mode: 'HTML',
         },
       },
     ], { cache_time: 60 });
@@ -110,13 +110,13 @@ export async function handleInlineQuery(ctx: BotContext): Promise<void> {
       description: 'Tap to start this transfer via goBlink',
       input_message_content: {
         message_text:
-          `⚡ *goBlink Transfer*\n\n` +
-          `💸 ${formatAmount(amount!)} ${displaySymbol(tokenUp)}\n` +
-          `📤 From: ${srcChain.name}\n` +
-          `📥 To: ${dstChain.name}\n\n` +
+          `⚡ <b>goBlink Transfer</b>\n\n` +
+          `💸 ${htmlEsc(formatAmount(amount!))} ${htmlEsc(displaySymbol(tokenUp))}\n` +
+          `📤 From: ${htmlEsc(srcChain.name)}\n` +
+          `📥 To: ${htmlEsc(dstChain.name)}\n\n` +
           `Non-custodial · Send to a deposit address from any wallet.\n\n` +
-          `[Start this transfer](https://t.me/goBlinkBot?start=${deepLink})`,
-        parse_mode: 'Markdown' as const,
+          `<a href="https://t.me/goBlinkBot?start=${deepLink}">Start this transfer</a>`,
+        parse_mode: 'HTML' as const,
       },
       reply_markup: {
         inline_keyboard: [[
@@ -154,11 +154,11 @@ export async function handleInlineQuery(ctx: BotContext): Promise<void> {
       description: 'You\'ll pick the source chain in the bot',
       input_message_content: {
         message_text:
-          `⚡ *goBlink Transfer*\n\n` +
-          `💸 ${formatAmount(amount!)} ${displaySymbol(tokenUp)} → ${dstChain.name}\n\n` +
+          `⚡ <b>goBlink Transfer</b>\n\n` +
+          `💸 ${htmlEsc(formatAmount(amount!))} ${htmlEsc(displaySymbol(tokenUp))} → ${htmlEsc(dstChain.name)}\n\n` +
           `Non-custodial · Send to a deposit address from any wallet.\n\n` +
-          `[Start this transfer](https://t.me/goBlinkBot?start=${deepLink})`,
-        parse_mode: 'Markdown' as const,
+          `<a href="https://t.me/goBlinkBot?start=${deepLink}">Start this transfer</a>`,
+        parse_mode: 'HTML' as const,
       },
       reply_markup: {
         inline_keyboard: [[
@@ -181,11 +181,11 @@ export async function handleInlineQuery(ctx: BotContext): Promise<void> {
     description: 'You\'ll pick the source chain in the bot',
     input_message_content: {
       message_text:
-        `⚡ *goBlink Transfer*\n\n` +
-        `💸 ${formatAmount(amount!)} ${displaySymbol(tokenUp)} → ${chain.name}\n\n` +
+        `⚡ <b>goBlink Transfer</b>\n\n` +
+        `💸 ${htmlEsc(formatAmount(amount!))} ${htmlEsc(displaySymbol(tokenUp))} → ${htmlEsc(chain.name)}\n\n` +
         `Non-custodial · Send to a deposit address from any wallet.\n\n` +
-        `[Start this transfer](https://t.me/goBlinkBot?start=t_${amount}_${tokenUp}_${chain.id})`,
-      parse_mode: 'Markdown' as const,
+        `<a href="https://t.me/goBlinkBot?start=t_${amount}_${tokenUp}_${chain.id}">Start this transfer</a>`,
+      parse_mode: 'HTML' as const,
     },
     reply_markup: {
       inline_keyboard: [[

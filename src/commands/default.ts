@@ -1,6 +1,6 @@
 import type { BotContext } from '../types/index.js';
 import { createOrUpdateUser, setUserDefaults, getUserDefaults } from '../services/supabase.js';
-import { displaySymbol } from '../utils/formatters.js';
+import { displaySymbol, htmlEsc } from '../utils/formatters.js';
 
 const VALID_CHAINS = [
   'ethereum', 'solana', 'sui', 'near', 'base', 'arbitrum',
@@ -26,20 +26,20 @@ export async function defaultCommand(ctx: BotContext): Promise<void> {
       const defaults = await getUserDefaults(from.id);
       if (!defaults?.srcChain) {
         await ctx.reply(
-          '⚙️ *Default Source*: not set\n\n' +
+          '⚙️ <b>Default Source</b>: not set\n\n' +
           'Set a default to skip the first 2 steps:\n' +
-          '`/default solana USDC`\n' +
-          '`/default near NEAR`\n' +
-          '`/default clear` to reset',
-          { parse_mode: 'Markdown' },
+          '<code>/default solana USDC</code>\n' +
+          '<code>/default near NEAR</code>\n' +
+          '<code>/default clear</code> to reset',
+          { parse_mode: 'HTML' },
         );
       } else {
         const token = defaults.srcToken ? displaySymbol(defaults.srcToken) : 'any';
         await ctx.reply(
-          `⚙️ *Default Source*: ${defaults.srcChain} / ${token}\n\n` +
+          `⚙️ <b>Default Source</b>: ${htmlEsc(defaults.srcChain)} / ${htmlEsc(token)}\n\n` +
           'Your /transfer will start at step 3 (destination).\n\n' +
-          '`/default clear` to reset',
-          { parse_mode: 'Markdown' },
+          '<code>/default clear</code> to reset',
+          { parse_mode: 'HTML' },
         );
       }
     } catch {
@@ -70,7 +70,7 @@ export async function defaultCommand(ctx: BotContext): Promise<void> {
   }
 
   if (!token) {
-    await ctx.reply('Usage: `/default <chain> <token>`\n\nExample: `/default solana USDC`', { parse_mode: 'Markdown' });
+    await ctx.reply('Usage: <code>/default &lt;chain&gt; &lt;token&gt;</code>\n\nExample: <code>/default solana USDC</code>', { parse_mode: 'HTML' });
     return;
   }
 
@@ -78,9 +78,9 @@ export async function defaultCommand(ctx: BotContext): Promise<void> {
     await createOrUpdateUser(from.id, from.username, from.first_name);
     await setUserDefaults(from.id, { srcChain: chain, srcToken: token });
     await ctx.reply(
-      `✅ Default set: *${chain}* / *${displaySymbol(token)}*\n\n` +
+      `✅ Default set: <b>${htmlEsc(chain)}</b> / <b>${htmlEsc(displaySymbol(token))}</b>\n\n` +
       'Your /transfer will now skip to destination chain.',
-      { parse_mode: 'Markdown' },
+      { parse_mode: 'HTML' },
     );
   } catch {
     await ctx.reply('❌ Couldn\'t save defaults. Try again.');

@@ -1,7 +1,7 @@
 import type { BotContext } from '../types/index.js';
 import { mainMenuKeyboard } from '../utils/keyboards.js';
 import { createOrUpdateUser, getUser } from '../services/supabase.js';
-import { displaySymbol } from '../utils/formatters.js';
+import { displaySymbol, htmlEsc } from '../utils/formatters.js';
 
 export async function startCommand(ctx: BotContext): Promise<void> {
   const from = ctx.from;
@@ -68,11 +68,11 @@ export async function startCommand(ctx: BotContext): Promise<void> {
   // From group redirect — show welcome with context
   if (text.includes('from_group')) {
     await ctx.reply(
-      `⚡ *goBlink*\n\n` +
+      `⚡ <b>goBlink</b>\n\n` +
       `You're all set! You can now use goBlink in groups and here in DM.\n\n` +
       `Private commands like /history, /addressbook, and /default work here.\n` +
       `Transfers and prices work in both groups and DM.`,
-      { parse_mode: 'Markdown', reply_markup: mainMenuKeyboard() },
+      { parse_mode: 'HTML', reply_markup: mainMenuKeyboard() },
     );
     return;
   }
@@ -101,17 +101,17 @@ export async function startCommand(ctx: BotContext): Promise<void> {
       .url('📩 Open DM', 'https://t.me/goBlinkBot');
 
     await ctx.reply(
-      `⚡ *goBlink* — Move value anywhere, instantly.\n\n` +
+      `⚡ <b>goBlink</b> — Move value anywhere, instantly.\n\n` +
       `Use me here or in DM. Private commands (history, addresses) work in DM only.`,
-      { parse_mode: 'Markdown', reply_markup: kb },
+      { parse_mode: 'HTML', reply_markup: kb },
     );
     return;
   }
 
   if (isNew) {
     await ctx.reply(
-      `⚡ *goBlink*\n\n` +
-      `Hey ${name}! Welcome to goBlink — the fastest way to move tokens across chains.\n\n` +
+      `⚡ <b>goBlink</b>\n\n` +
+      `Hey ${htmlEsc(name)}! Welcome to goBlink — the fastest way to move tokens across chains.\n\n` +
       `🔄 Cross-chain transfers across 12 chains\n` +
       `💸 Payment requests via shareable links\n` +
       `📒 Address book with auto-fill\n` +
@@ -120,12 +120,12 @@ export async function startCommand(ctx: BotContext): Promise<void> {
       `🔗 Referral program — /referral\n\n` +
       `Non-custodial · 65+ tokens · Works in groups\n\n` +
       `Tap a button to get started:`,
-      { parse_mode: 'Markdown', reply_markup: mainMenuKeyboard() },
+      { parse_mode: 'HTML', reply_markup: mainMenuKeyboard() },
     );
   } else {
     await ctx.reply(
-      `⚡ *goBlink* — Move value anywhere, instantly.`,
-      { parse_mode: 'Markdown', reply_markup: mainMenuKeyboard() },
+      `⚡ <b>goBlink</b> — Move value anywhere, instantly.`,
+      { parse_mode: 'HTML', reply_markup: mainMenuKeyboard() },
     );
   }
 }

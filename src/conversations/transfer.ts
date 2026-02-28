@@ -21,6 +21,7 @@ import {
   formatDepositMessage,
   formatAmount,
   displaySymbol,
+  htmlEsc,
 } from '../utils/formatters.js';
 import {
   checkTransferLimit,
@@ -237,9 +238,9 @@ export async function startTransferFlowPrefilled(
       if (state.srcToken && state.dstToken) {
         state.step = 'recipient';
         await ctx.reply(
-          `⚡ *Transfer pre-filled:*\n` +
-          `${formatAmount(prefill.amount)} ${displaySymbol(state.srcToken)} (${srcChainConfig.name}) → ${displaySymbol(state.dstToken)} (${dstChainConfig.name})\n`,
-          { parse_mode: 'Markdown' },
+          `⚡ <b>Transfer pre-filled:</b>\n` +
+          `${htmlEsc(formatAmount(prefill.amount))} ${htmlEsc(displaySymbol(state.srcToken))} (${htmlEsc(srcChainConfig.name)}) → ${htmlEsc(displaySymbol(state.dstToken))} (${htmlEsc(dstChainConfig.name)})\n`,
+          { parse_mode: 'HTML' },
         );
         await promptRecipient(ctx, state, chains);
         return;
@@ -637,24 +638,24 @@ async function executeTransfer(ctx: BotContext, state: TransferState, chains: Ch
     if (inGroup) {
       try {
         sentMsg = await ctx.api.sendMessage(from.id, depositMsg, {
-          parse_mode: 'Markdown',
+          parse_mode: 'HTML',
           reply_markup: transferStatusKeyboard(),
         });
         const { InlineKeyboard } = await import('grammy');
         await ctx.reply(
-          `✅ Transfer created! I sent the deposit details to your DM, ${from.first_name ?? 'there'}.`,
+          `✅ Transfer created! I sent the deposit details to your DM, ${htmlEsc(from.first_name ?? 'there')}.`,
           { reply_markup: new InlineKeyboard().url('📩 Open DM', 'https://t.me/goBlinkBot') },
         );
       } catch {
         // Can't DM — fall back to group (user hasn't started bot in DM)
         sentMsg = await ctx.reply(depositMsg, {
-          parse_mode: 'Markdown',
+          parse_mode: 'HTML',
           reply_markup: transferStatusKeyboard(),
         });
       }
     } else {
       sentMsg = await ctx.reply(depositMsg, {
-        parse_mode: 'Markdown',
+        parse_mode: 'HTML',
         reply_markup: transferStatusKeyboard(),
       });
     }
@@ -735,10 +736,10 @@ async function promptRecipient(ctx: BotContext, state: TransferState, chains: Ch
 
   const chatType = ctx.chat?.type;
   const replyHint = (chatType === 'group' || chatType === 'supergroup')
-    ? '\n\n💡 _Reply to this message with the address._'
+    ? '\n\n💡 <i>Reply to this message with the address.</i>'
     : '';
-  await ctx.reply(`${header}📬 Who's receiving? Enter a ${destConfig.name} address:${replyHint}`, {
-    parse_mode: replyHint ? 'Markdown' : undefined,
+  await ctx.reply(`${header}📬 Who's receiving? Enter a ${htmlEsc(destConfig.name)} address:${replyHint}`, {
+    parse_mode: replyHint ? 'HTML' : undefined,
   });
 }
 
@@ -786,16 +787,16 @@ async function handleRecipientSet(ctx: BotContext, state: TransferState, chains:
             kb.text('✖ Cancel', 'action:cancel');
 
             await ctx.reply(
-              `${stepHeader('refund')}\n\n🔙 Refund address on ${srcConfig.name} (if anything goes wrong):\n\nUsing *${best.label}* (\`${shortAddr}\`)\n\nChange it or confirm to continue:`,
-              { parse_mode: 'Markdown', reply_markup: kb },
+              `${stepHeader('refund')}\n\n🔙 Refund address on ${htmlEsc(srcConfig.name)} (if anything goes wrong):\n\nUsing <b>${htmlEsc(best.label)}</b> (<code>${htmlEsc(shortAddr)}</code>)\n\nChange it or confirm to continue:`,
+              { parse_mode: 'HTML', reply_markup: kb },
             );
             return;
           }
 
           // Single saved address — auto-fill and go straight to confirm
           await ctx.reply(
-            `🔙 Refund to: *${best.label}* (\`${shortAddr}\`) on ${srcConfig.name}`,
-            { parse_mode: 'Markdown' },
+            `🔙 Refund to: <b>${htmlEsc(best.label)}</b> (<code>${htmlEsc(shortAddr)}</code>) on ${htmlEsc(srcConfig.name)}`,
+            { parse_mode: 'HTML' },
           );
           await showConfirmation(ctx, state, chains);
           return;
@@ -807,8 +808,8 @@ async function handleRecipientSet(ctx: BotContext, state: TransferState, chains:
   // No saved addresses — ask manually
   state.step = 'refund';
   const ct = ctx.chat?.type;
-  const hint = (ct === 'group' || ct === 'supergroup') ? '\n\n💡 _Reply to this message with the address._' : '';
-  await ctx.reply(`${stepHeader('refund')}\n\n🔙 Enter your ${srcConfig.name} address for refunds (if anything goes wrong):${hint}`, {
-    parse_mode: hint ? 'Markdown' : undefined,
+  const hint = (ct === 'group' || ct === 'supergroup') ? '\n\n💡 <i>Reply to this message with the address.</i>' : '';
+  await ctx.reply(`${stepHeader('refund')}\n\n🔙 Enter your ${htmlEsc(srcConfig.name)} address for refunds (if anything goes wrong):${hint}`, {
+    parse_mode: hint ? 'HTML' : undefined,
   });
 }

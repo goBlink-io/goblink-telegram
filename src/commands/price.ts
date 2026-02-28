@@ -35,15 +35,15 @@ async function showPriceOverview(ctx: BotContext): Promise<void> {
       }
     }
 
-    const lines: string[] = ['💰 *Market Prices*\n'];
+    const lines: string[] = ['💰 <b>Market Prices</b>\n'];
     for (const sym of TOP_TOKENS) {
       const t = bySymbol.get(sym);
       if (t?.price) {
-        lines.push(`*${t.symbol}:* $${formatPrice(t.price)}`);
+        lines.push(`<b>${t.symbol}:</b> $${formatPrice(t.price)}`);
       }
     }
 
-    lines.push('\n_Use /price TOKEN for any token (e.g. /price LINK)_');
+    lines.push('\n<i>Use /price TOKEN for any token (e.g. /price LINK)</i>');
 
     // Build quick-lookup buttons
     const kb = new InlineKeyboard();
@@ -54,7 +54,7 @@ async function showPriceOverview(ctx: BotContext): Promise<void> {
     for (const s of row2) kb.text(s, `price:${s}`);
 
     await ctx.reply(lines.join('\n'), {
-      parse_mode: 'Markdown',
+      parse_mode: 'HTML',
       reply_markup: kb,
     });
   } catch (err) {
@@ -88,9 +88,9 @@ async function showTokenPrice(ctx: BotContext, symbol: string, edit = false): Pr
     const chains = [...new Set(matches.map((t) => t.chain))];
 
     const lines = [
-      `💰 *${token.symbol}*`,
+      `💰 <b>${token.symbol}</b>`,
       '',
-      price ? `Price: *$${formatPrice(price)}*` : 'Price: _unavailable_',
+      price ? `Price: <b>$${formatPrice(price)}</b>` : 'Price: <i>unavailable</i>',
       '',
       `Available on: ${chains.join(', ')}`,
     ];
@@ -102,12 +102,12 @@ async function showTokenPrice(ctx: BotContext, symbol: string, edit = false): Pr
     const text = lines.join('\n');
     if (edit && ctx.callbackQuery?.message) {
       try {
-        await ctx.editMessageText(text, { parse_mode: 'Markdown', reply_markup: kb });
+        await ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: kb });
       } catch {
-        await ctx.reply(text, { parse_mode: 'Markdown', reply_markup: kb });
+        await ctx.reply(text, { parse_mode: 'HTML', reply_markup: kb });
       }
     } else {
-      await ctx.reply(text, { parse_mode: 'Markdown', reply_markup: kb });
+      await ctx.reply(text, { parse_mode: 'HTML', reply_markup: kb });
     }
   } catch (err) {
     console.error('Price lookup failed:', err);
