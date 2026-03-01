@@ -40,7 +40,27 @@ async function pollStatuses(bot: Bot<BotContext>): Promise<void> {
 
   for (const transfer of transfers) {
     try {
-      const status = await sdk.getTransferStatus(transfer.deposit_address);
+      // Skip transfers older than 24 hours — mark as expired
+      const createdAt = new Date(transfer.created_at).getTime();
+      const ageMs = Date.now() - createdAt;
+      if (ageMs > 24 * 60 * 60 * 1000) {
+        await updateTransferStatus(transfer.id, 'EXPIRED', undefined, undefined);
+        console.log(`Transfer ${transfer.id} expired (age: ${Math.round(ageMs / 3600000)}h)`);
+        continue;
+      }
+
+      let status;
+      try {
+        status = await sdk.getTransferStatus(transfer.deposit_address);
+      } catch (err: any) {
+        if (err?.statusCode === 404) {
+          // 1Click API pruned this execution — mark as expired
+          await updateTransferStatus(transfer.id, 'EXPIRED', undefined, undefined);
+          console.log(`Transfer ${transfer.id} no longer found on 1Click (404) — marked expired`);
+          continue;
+        }
+        throw err;
+      }
 
       if (status.status === transfer.status) continue;
 
