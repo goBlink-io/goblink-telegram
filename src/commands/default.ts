@@ -1,10 +1,11 @@
 import type { BotContext } from '../types/index.js';
 import { createOrUpdateUser, setUserDefaults, getUserDefaults } from '../services/supabase.js';
 import { displaySymbol, htmlEsc } from '../utils/formatters.js';
+import { normalizeChainId } from '../utils/filters.js';
 
 const VALID_CHAINS = [
   'ethereum', 'solana', 'sui', 'near', 'base', 'arbitrum',
-  'bnb', 'polygon', 'optimism', 'tron', 'aptos', 'starknet',
+  'bnb', 'bsc', 'polygon', 'optimism', 'tron', 'aptos', 'starknet',
 ];
 
 /**
@@ -61,7 +62,7 @@ export async function defaultCommand(ctx: BotContext): Promise<void> {
   }
 
   // Set defaults
-  const chain = parts[0]!.toLowerCase();
+  const chain = normalizeChainId(parts[0]!);
   const token = parts[1]?.toUpperCase();
 
   if (!VALID_CHAINS.includes(chain)) {

@@ -112,7 +112,7 @@ const CHAINS_TTL = 300_000; // 5 min
 export async function getChainsCached(): Promise<ChainConfig[]> {
   if (cachedChains && Date.now() - chainsCacheTime < CHAINS_TTL) return cachedChains;
   const sdk = getSDK();
-  const all = sdk.getChains();
+  const all = await sdk.getChains();
   cachedChains = all.filter((c) => isActiveChain(c.id));
   chainsCacheTime = Date.now();
   return cachedChains;

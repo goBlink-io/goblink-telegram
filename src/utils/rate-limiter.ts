@@ -50,6 +50,19 @@ export function checkQuoteLimit(userId: number): {
   return checkLimit(quoteLimits, userId, QUOTE_LIMIT, QUOTE_WINDOW_MS);
 }
 
+// Periodic cleanup of stale entries to prevent memory leak
+setInterval(() => {
+  const now = Date.now();
+  for (const [userId, entry] of transferLimits) {
+    entry.timestamps = entry.timestamps.filter(t => now - t < TRANSFER_WINDOW_MS);
+    if (entry.timestamps.length === 0) transferLimits.delete(userId);
+  }
+  for (const [userId, entry] of quoteLimits) {
+    entry.timestamps = entry.timestamps.filter(t => now - t < QUOTE_WINDOW_MS);
+    if (entry.timestamps.length === 0) quoteLimits.delete(userId);
+  }
+}, 60 * 60 * 1000).unref();
+
 export function formatRetryAfter(ms: number): string {
   const seconds = Math.ceil(ms / 1000);
   if (seconds < 60) return `${seconds} seconds`;

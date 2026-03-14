@@ -1,13 +1,11 @@
 import type { BotContext } from '../types/index.js';
-import { GoBlink } from '@urban-blazer/goblink-sdk';
 import type { ChainId, Token } from '@urban-blazer/goblink-sdk';
 import { ACTIVE_CHAIN_IDS, HIDDEN_TOKEN_SYMBOLS } from '../utils/filters.js';
 import { chainSelectKeyboard, tokenSelectKeyboard, amountKeyboard, mainMenuKeyboard } from '../utils/keyboards.js';
 import { InlineKeyboard } from 'grammy';
 import { getAddresses, getUser } from '../services/supabase.js';
+import { getSDK } from '../services/goblink.js';
 import { displaySymbol, htmlEsc } from '../utils/formatters.js';
-
-const sdk = new GoBlink();
 
 type RequestStepName = 'chain' | 'token' | 'amount' | 'address' | 'memo' | 'done';
 
@@ -33,6 +31,7 @@ function sendTyping(ctx: BotContext): void {
 
 
 async function getTokensForChain(chain: ChainId): Promise<Token[]> {
+  const sdk = getSDK();
   const all = await sdk.getTokens({ chain });
   return all.filter((t: Token) => !HIDDEN_TOKEN_SYMBOLS.has(t.symbol));
 }
@@ -97,6 +96,7 @@ async function editMessage(ctx: BotContext, text: string, keyboard?: InlineKeybo
 export async function startRequestFlow(ctx: BotContext): Promise<void> {
   try {
     sendTyping(ctx);
+    const sdk = getSDK();
     const allChains = await sdk.getChains();
     const chains = allChains.filter(c => ACTIVE_CHAIN_IDS.has(c.id));
 
@@ -287,6 +287,16 @@ export async function handleRequestText(ctx: BotContext): Promise<boolean> {
 
   if (state.step === 'address') {
     try { await ctx.deleteMessage(); } catch {}
+    // Validate address format
+    if (state.chain) {
+      const sdk = getSDK();
+      const valid = sdk.validateAddress(state.chain as ChainId, text);
+      if (!valid) {
+        const chainName = state.chains?.find(c => c.id === state.chain)?.name ?? state.chain;
+        await ctx.reply(`❌ That doesn't look like a valid ${chainName} address. Please try again.`);
+        return true;
+      }
+    }
     state.address = text;
     state.step = 'memo';
     await showMemoStep(ctx);
@@ -312,7 +322,7 @@ async function handleAmountInput(ctx: BotContext, amount: string): Promise<void>
 
   const num = parseFloat(amount);
   if (isNaN(num) || num <= 0) {
-    // Don't change state — let them retry
+    await ctx.reply('Please enter a valid positive number.');
     return;
   }
 
@@ -326,9 +336,7 @@ async function handleAmountInput(ctx: BotContext, amount: string): Promise<void>
       const user = await getUser(from.id);
       if (user) {
         const saved = await getAddresses(user.id);
-        const chainAddresses = saved.filter(
-          a => a.chain.toLowerCase() === (state.chains?.find(c => c.id === state.chain)?.name ?? '').toLowerCase()
-        );
+        const chainAddresses = saved.filter(a => a.chain === state.chain);
 
         if (chainAddresses.length > 0) {
           const chainName = state.chains?.find(c => c.id === state.chain)?.name ?? state.chain;

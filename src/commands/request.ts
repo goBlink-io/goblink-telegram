@@ -1,9 +1,7 @@
 import type { BotContext } from '../types/index.js';
 import { chainSelectKeyboard } from '../utils/keyboards.js';
-import { GoBlink } from '@urban-blazer/goblink-sdk';
+import { getSDK } from '../services/goblink.js';
 import { ACTIVE_CHAIN_IDS } from '../utils/filters.js';
-
-const sdk = new GoBlink();
 
 /**
  * /request — start payment request flow
@@ -13,6 +11,7 @@ export async function requestCommand(ctx: BotContext): Promise<void> {
   if (!from) return;
 
   try {
+    const sdk = getSDK();
     const allChains = await sdk.getChains();
     const chains = allChains.filter(c => ACTIVE_CHAIN_IDS.has(c.id));
 

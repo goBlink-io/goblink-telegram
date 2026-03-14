@@ -3,6 +3,7 @@ import { getAddresses, saveAddress, deleteAddress } from '../services/supabase.j
 import { getUser, createOrUpdateUser } from '../services/supabase.js';
 import { InlineKeyboard } from 'grammy';
 import { htmlEsc } from '../utils/formatters.js';
+import { normalizeChainId } from '../utils/filters.js';
 
 /**
  * /addressbook — list saved addresses
@@ -74,11 +75,11 @@ export async function saveAddressCommand(ctx: BotContext): Promise<void> {
   }
 
   const label = parts[0]!;
-  const chain = parts[1]!.toLowerCase();
+  const chain = normalizeChainId(parts[1]!);
   const address = parts[2]!;
 
   // Validate chain
-  const validChains = ['ethereum', 'solana', 'sui', 'near', 'base', 'arbitrum', 'bnb', 'polygon', 'optimism', 'tron', 'aptos', 'starknet'];
+  const validChains = ['ethereum', 'solana', 'sui', 'near', 'base', 'arbitrum', 'bnb', 'bsc', 'polygon', 'optimism', 'tron', 'aptos', 'starknet'];
   if (!validChains.includes(chain)) {
     await ctx.reply(`Invalid chain "${chain}".\n\nValid chains: ${validChains.join(', ')}`);
     return;
@@ -104,8 +105,16 @@ export async function saveAddressCommand(ctx: BotContext): Promise<void> {
 export async function handleAddressDeleteCallback(ctx: BotContext, addressId: string): Promise<void> {
   try { await ctx.answerCallbackQuery(); } catch {}
 
+  const from = ctx.from;
+  if (!from) return;
+
   try {
-    await deleteAddress(addressId);
+    const user = await getUser(from.id);
+    if (!user) {
+      await ctx.reply('❌ User not found. Use /start first.');
+      return;
+    }
+    await deleteAddress(addressId, user.id);
     await ctx.editMessageText('✅ Address deleted.\n\nUse /addressbook to see remaining addresses.');
   } catch (err) {
     console.error('Delete address failed:', err);

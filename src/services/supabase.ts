@@ -151,9 +151,11 @@ export async function getAddresses(
   return (data as TgAddressEntry[]) ?? [];
 }
 
-export async function deleteAddress(id: string): Promise<void> {
+export async function deleteAddress(id: string, userId?: string): Promise<void> {
   const db = getSupabase();
-  const { error } = await db.from('tg_address_book').delete().eq('id', id);
+  let query = db.from('tg_address_book').delete().eq('id', id);
+  if (userId) query = query.eq('user_id', userId);
+  const { error } = await query;
   if (error) throw new Error(`Failed to delete address: ${error.message}`);
 }
 

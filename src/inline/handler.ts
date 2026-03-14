@@ -1,12 +1,8 @@
 import type { BotContext } from '../types/index.js';
 import { getSDK } from '../services/goblink.js';
 import { displaySymbol, formatAmount, htmlEsc } from '../utils/formatters.js';
+import { ACTIVE_CHAIN_IDS } from '../utils/filters.js';
 import type { ChainConfig } from '@urban-blazer/goblink-sdk';
-
-const ACTIVE_CHAINS = new Set([
-  'ethereum', 'solana', 'sui', 'near', 'base', 'arbitrum',
-  'bnb', 'polygon', 'optimism', 'tron', 'aptos', 'starknet',
-]);
 
 /**
  * Handle inline queries.
@@ -76,7 +72,7 @@ export async function handleInlineQuery(ctx: BotContext): Promise<void> {
   }
 
   const sdk = getSDK();
-  const allChains = sdk.getChains().filter(c => ACTIVE_CHAINS.has(c.id));
+  const allChains = (await sdk.getChains()).filter(c => ACTIVE_CHAIN_IDS.has(c.id));
 
   const findChain = (q: string) =>
     allChains.find(c => c.id === q.toLowerCase() || c.name.toLowerCase() === q.toLowerCase());
